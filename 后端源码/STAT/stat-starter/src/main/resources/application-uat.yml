@@ -1,0 +1,28 @@
+mybatis:
+  type-aliases-package: com.stat.dal.po
+  mapper-locations: classpath:com.stat.dal.mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+    cache-enabled: true
+
+spring:
+   application:
+    name: stat
+   datasource:
+    type: com.alibaba.druid.pool.DruidDataSource            # 当前数据源操作类型
+    driver-class-name: com.mysql.cj.jdbc.Driver     # mysql驱动包
+    # url: jdbc:mysql://82.157.243.132:3306/crf?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    # username: crf
+    # password: 6369b2886fe16510
+    url: jdbc:mysql://127.0.0.1:3306/define_db?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    username: root
+    password: 202412
+   mvc:
+     static-path-pattern: /static/**
+   servlet:
+     multipart:
+       max-file-size: 1024MB
+       max-request-size: 1024MB
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl

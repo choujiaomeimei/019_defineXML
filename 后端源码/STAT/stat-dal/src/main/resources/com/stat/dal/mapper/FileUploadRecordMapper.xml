@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.stat.dal.mapper.FileUploadRecordMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="BaseResultMap" type="com.stat.common.entity.FileUploadRecord">
+        <id column="id" property="id" />
+        <result column="file_id" property="fileId" />
+        <result column="project_id" property="projectId" />
+        <result column="username" property="username" />
+        <result column="file_category" property="fileCategory" />
+        <result column="original_name" property="originalName" />
+        <result column="server_file_name" property="serverFileName" />
+        <result column="file_path" property="filePath" />
+        <result column="file_size" property="fileSize" />
+        <result column="file_extension" property="fileExtension" />
+        <result column="file_md5" property="fileMd5" />
+        <result column="upload_time" property="uploadTime" />
+        <result column="upload_status" property="uploadStatus" />
+        <result column="process_status" property="processStatus" />
+        <result column="process_time" property="processTime" />
+        <result column="process_duration_ms" property="processDurationMs" />
+        <result column="output_file_path" property="outputFilePath" />
+        <result column="error_message" property="errorMessage" />
+        <result column="create_time" property="createTime" />
+        <result column="update_time" property="updateTime" />
+        <result column="deleted" property="deleted" />
+        <result column="remarks" property="remarks" />
+        <result column="version_number" property="versionNumber" />
+    </resultMap>
+
+    <!-- 通用查询结果列 -->
+    <sql id="Base_Column_List">
+        id, file_id, project_id, username, file_category, original_name, server_file_name, 
+        file_path, file_size, file_extension, file_md5, upload_time, upload_status, 
+        process_status, process_time, process_duration_ms, output_file_path, error_message, 
+        create_time, update_time, deleted, remarks, version_number
+    </sql>
+
+    <!-- 根据项目ID和文件类别查询文件列表 -->
+    <select id="selectByProjectIdAndCategory" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List" />
+        FROM file_upload_records
+        WHERE project_id = #{projectId}
+          AND file_category = #{fileCategory}
+          AND deleted = 0
+        ORDER BY upload_time DESC
+    </select>
+
+    <!-- 根据项目ID查询所有文件 -->
+    <select id="selectByProjectId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List" />
+        FROM file_upload_records
+        WHERE project_id = #{projectId}
+          AND deleted = 0
+        ORDER BY file_category, upload_time DESC
+    </select>
+
+    <!-- 根据文件ID查询文件信息 -->
+    <select id="selectByFileId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List" />
+        FROM file_upload_records
+        WHERE file_id = #{fileId}
+          AND deleted = 0
+    </select>
+
+    <!-- 分页查询文件列表 -->
+    <select id="selectPageByCondition" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List" />
+        FROM file_upload_records
+        <where>
+            deleted = 0
+            <if test="projectId != null and projectId != ''">
+                AND project_id = #{projectId}
+            </if>
+            <if test="fileCategory != null and fileCategory != ''">
+                AND file_category = #{fileCategory}
+            </if>
+            <if test="uploadStatus != null and uploadStatus != ''">
+                AND upload_status = #{uploadStatus}
+            </if>
+            <if test="processStatus != null and processStatus != ''">
+                AND process_status = #{processStatus}
+            </if>
+        </where>
+        ORDER BY upload_time DESC
+    </select>
+
+    <!-- 统计项目文件数量 -->
+    <select id="countByProjectIdAndCategory" resultType="java.lang.Integer">
+        SELECT COUNT(*)
+        FROM file_upload_records
+        WHERE project_id = #{projectId}
+          AND file_category = #{fileCategory}
+          AND deleted = 0
+    </select>
+
+    <!-- 统计项目总文件大小 -->
+    <select id="sumFileSizeByProjectId" resultType="java.lang.Long">
+        SELECT COALESCE(SUM(file_size), 0)
+        FROM file_upload_records
+        WHERE project_id = #{projectId}
+          AND deleted = 0
+          AND upload_status = 'success'
+    </select>
+
+    <!-- 根据用户名查询文件列表 -->
+    <select id="selectByUsername" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List" />
+        FROM file_upload_records
+        WHERE username = #{username}
+          AND deleted = 0
+        ORDER BY upload_time DESC
+    </select>
+
+    <!-- 更新文件处理状态 -->
+    <update id="updateProcessStatus">
+        UPDATE file_upload_records
+        SET process_status = #{processStatus},
+            process_time = #{processTime},
+            process_duration_ms = #{processDurationMs},
+            output_file_path = #{outputFilePath},
+            error_message = #{errorMessage},
+            update_time = NOW()
+        WHERE file_id = #{fileId}
+          AND deleted = 0
+    </update>
+
+    <!-- 更新文件上传状态 -->
+    <update id="updateUploadStatus">
+        UPDATE file_upload_records
+        SET upload_status = #{uploadStatus},
+            error_message = #{errorMessage},
+            update_time = NOW()
+        WHERE file_id = #{fileId}
+          AND deleted = 0
+    </update>
+
+</mapper>

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API调试页面</title>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+</head>
+<body>
+    <h1>API调试页面</h1>
+    <div id="output"></div>
+    
+    <script>
+        async function testApi() {
+            const output = document.getElementById('output');
+            
+            try {
+                // 测试获取项目列表API
+                const response = await axios.get('http://localhost:9201/api/projects/hzh');
+                console.log('API响应:', response.data);
+                
+                if (response.data.success && response.data.data) {
+                    const projects = Array.isArray(response.data.data) ? response.data.data : [response.data.data];
+                    output.innerHTML = '<h2>项目列表:</h2>';
+                    
+                    projects.forEach((project, index) => {
+                        output.innerHTML += `
+                            <div style="border: 1px solid #ccc; margin: 10px; padding: 10px;">
+                                <h3>项目 ${index + 1}</h3>
+                                <p><strong>项目ID:</strong> ${project.projectId}</p>
+                                <p><strong>项目名称:</strong> ${project.projectName}</p>
+                                <p><strong>标准类型:</strong> ${project.standardType}</p>
+                                <p><strong>标准类型类型:</strong> ${typeof project.standardType}</p>
+                                <p><strong>标准类型长度:</strong> ${project.standardType ? project.standardType.length : 0}</p>
+                                <p><strong>分割后的数组:</strong> ${project.standardType ? JSON.stringify(project.standardType.split(',')) : 'null'}</p>
+                            </div>
+                        `;
+                    });
+                } else {
+                    output.innerHTML = '<p>API调用失败或没有数据</p>';
+                }
+            } catch (error) {
+                console.error('API调用错误:', error);
+                output.innerHTML = `<p>API调用错误: ${error.message}</p>`;
+            }
+        }
+        
+        // 页面加载时自动测试
+        window.onload = testApi;
+    </script>
+</body>
+</html>

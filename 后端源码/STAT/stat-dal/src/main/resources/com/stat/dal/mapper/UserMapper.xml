@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.stat.dal.mapper.UserMapper">
+    
+    <resultMap id="BaseResultMap" type="com.stat.common.entity.User">
+        <id column="id" property="id"/>
+        <result column="username" property="username"/>
+        <result column="password" property="password"/>
+        <result column="email" property="email"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, username, password, email, create_time, update_time
+    </sql>
+
+    <!-- 根据用户名查询用户 -->
+    <select id="selectByUsername" resultMap="BaseResultMap">
+        SELECT 
+        <include refid="Base_Column_List"/>
+        FROM user
+        WHERE username = #{username}
+    </select>
+
+    <!-- 检查用户名是否存在 -->
+    <select id="checkUsernameExists" resultType="java.lang.Integer">
+        SELECT COUNT(1) 
+        FROM user 
+        WHERE username = #{username}
+    </select>
+
+    <!-- 插入新用户 -->
+    <insert id="insert" parameterType="com.stat.common.entity.User" 
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user (
+            username,
+            password,
+            email,
+            create_time,
+            update_time
+        ) VALUES (
+            #{username},
+            #{password},
+            #{email},
+            NOW(),
+            NOW()
+        )
+    </insert>
+
+    <!-- 根据ID查询用户 -->
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT 
+        <include refid="Base_Column_List"/>
+        FROM user
+        WHERE id = #{id}
+    </select>
+
+    <!-- 更新用户信息 -->
+    <update id="updateUser" parameterType="com.stat.common.entity.User">
+        UPDATE user
+        <set>
+            <if test="password != null">
+                password = #{password},
+            </if>
+            <if test="email != null">
+                email = #{email},
+            </if>
+            update_time = NOW()
+        </set>
+        WHERE id = #{id}
+    </update>
+</mapper> 

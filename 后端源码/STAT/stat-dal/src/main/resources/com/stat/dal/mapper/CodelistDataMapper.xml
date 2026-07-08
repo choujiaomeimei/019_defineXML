@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.stat.dal.mapper.CodelistDataMapper">
+    
+    <resultMap id="BaseResultMap" type="com.stat.dal.po.CodelistDataPO">
+        <id column="id" property="id" jdbcType="BIGINT"/>
+        <result column="project_id" property="projectId" jdbcType="VARCHAR"/>
+        <result column="username" property="username" jdbcType="VARCHAR"/>
+        <result column="vcd" property="vcd" jdbcType="VARCHAR"/>
+        <result column="vlabel" property="vlabel" jdbcType="VARCHAR"/>
+        <result column="nci_codelist_code" property="nciCodelistCode" jdbcType="VARCHAR"/>
+        <result column="type" property="type" jdbcType="VARCHAR"/>
+        <result column="terminology" property="terminology" jdbcType="VARCHAR"/>
+        <result column="comment" property="comment" jdbcType="VARCHAR"/>
+        <result column="cdnum" property="cdnum" jdbcType="INTEGER"/>
+        <result column="code" property="code" jdbcType="VARCHAR"/>
+        <result column="nci_term_code" property="nciTermCode" jdbcType="VARCHAR"/>
+        <result column="code_des" property="codeDes" jdbcType="LONGVARCHAR"/>
+        <result column="origin" property="origin" jdbcType="LONGVARCHAR"/>
+        <result column="code_ver" property="codeVer" jdbcType="VARCHAR"/>
+        <result column="flag" property="flag" jdbcType="VARCHAR"/>
+        <result column="sort_order" property="sortOrder" jdbcType="INTEGER"/>
+        <result column="created_time" property="createdTime" jdbcType="TIMESTAMP"/>
+        <result column="updated_time" property="updatedTime" jdbcType="TIMESTAMP"/>
+        <result column="created_by" property="createdBy" jdbcType="VARCHAR"/>
+        <result column="updated_by" property="updatedBy" jdbcType="VARCHAR"/>
+    </resultMap>
+    
+    <sql id="Base_Column_List">
+        id, project_id, username, vcd, vlabel, nci_codelist_code, type, terminology, comment,
+        cdnum, code, nci_term_code, code_des, origin, code_ver, flag,
+        sort_order, created_time, updated_time, created_by, updated_by
+    </sql>
+    
+    <insert id="insert" parameterType="com.stat.dal.po.CodelistDataPO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO sas_codelist_data (
+            project_id, username, vcd, vlabel, nci_codelist_code, type, terminology, comment,
+            cdnum, code, nci_term_code, code_des, origin, code_ver, flag,
+            sort_order, created_by, updated_by
+        ) VALUES (
+            #{projectId}, #{username}, #{vcd}, #{vlabel}, #{nciCodelistCode}, #{type}, #{terminology}, #{comment},
+            #{cdnum}, #{code}, #{nciTermCode}, #{codeDes}, #{origin}, #{codeVer}, #{flag},
+            #{sortOrder}, #{createdBy}, #{updatedBy}
+        )
+    </insert>
+    
+    <update id="updateById" parameterType="com.stat.dal.po.CodelistDataPO">
+        UPDATE sas_codelist_data SET
+            vcd = #{vcd},
+            vlabel = #{vlabel},
+            nci_codelist_code = #{nciCodelistCode},
+            type = #{type},
+            terminology = #{terminology},
+            comment = #{comment},
+            cdnum = #{cdnum},
+            code = #{code},
+            nci_term_code = #{nciTermCode},
+            code_des = #{codeDes},
+            origin = #{origin},
+            code_ver = #{codeVer},
+            flag = #{flag},
+            sort_order = #{sortOrder},
+            updated_by = #{updatedBy},
+            updated_time = NOW()
+        WHERE id = #{id}
+    </update>
+    
+    <!-- 根据ID删除CodeList数据 -->
+    <delete id="deleteById" parameterType="java.lang.Long">
+        DELETE FROM sas_codelist_data WHERE id = #{id}
+    </delete>
+    
+    <!-- 根据项目ID删除所有CodeList数据 -->
+    <delete id="deleteByProjectId" parameterType="java.util.Map">
+        DELETE FROM sas_codelist_data WHERE project_id = #{projectId} AND username = #{username}
+    </delete>
+    
+    <!-- 根据ID查询CodeList数据 -->
+    <select id="selectById" parameterType="java.lang.Long" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sas_codelist_data
+        WHERE id = #{id}
+    </select>
+    
+    <!-- 根据项目ID查询CodeList数据列表 -->
+    <select id="selectByProjectId" parameterType="java.util.Map" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sas_codelist_data
+        WHERE project_id = #{projectId} AND username = #{username}
+        ORDER BY sort_order ASC
+    </select>
+    
+    <!-- 根据项目ID和VCD查询CodeList数据列表 -->
+    <select id="selectByProjectIdAndVcd" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sas_codelist_data
+        WHERE project_id = #{projectId} AND username = #{username}
+        <if test="vcd != null and vcd != ''">
+            AND vcd = #{vcd}
+        </if>
+        ORDER BY sort_order ASC
+    </select>
+    
+    <!-- 分页查询CodeList数据 -->
+    <select id="selectByPage" parameterType="java.util.Map" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sas_codelist_data
+        <where>
+            <if test="username != null and username != ''">
+                AND username = #{username}
+            </if>
+            <if test="projectId != null and projectId != ''">
+                AND project_id = #{projectId}
+            </if>
+            <if test="vcd != null and vcd != ''">
+                AND vcd = #{vcd}
+            </if>
+            <if test="code != null and code != ''">
+                AND code LIKE CONCAT('%', #{code}, '%')
+            </if>
+            <if test="vlabel != null and vlabel != ''">
+                AND vlabel LIKE CONCAT('%', #{vlabel}, '%')
+            </if>
+        </where>
+        ORDER BY sort_order ASC
+        <if test="offset != null and limit != null">
+            LIMIT #{offset}, #{limit}
+        </if>
+    </select>
+    
+    <!-- 查询CodeList数据总数 -->
+    <select id="countByParams" parameterType="java.util.Map" resultType="java.lang.Integer">
+        SELECT COUNT(*)
+        FROM sas_codelist_data
+        <where>
+            <if test="username != null and username != ''">
+                AND username = #{username}
+            </if>
+            <if test="projectId != null and projectId != ''">
+                AND project_id = #{projectId}
+            </if>
+            <if test="vcd != null and vcd != ''">
+                AND vcd = #{vcd}
+            </if>
+            <if test="code != null and code != ''">
+                AND code LIKE CONCAT('%', #{code}, '%')
+            </if>
+            <if test="vlabel != null and vlabel != ''">
+                AND vlabel LIKE CONCAT('%', #{vlabel}, '%')
+            </if>
+        </where>
+    </select>
+    
+    <!-- 批量更新排序顺序 -->
+    <update id="batchUpdateSortOrder" parameterType="java.util.List">
+        <foreach collection="list" item="item" index="index" separator=";">
+            UPDATE sas_codelist_data SET sort_order = #{item.sortOrder} WHERE id = #{item.id}
+        </foreach>
+    </update>
+    
+    <!-- 获取项目中所有不同的VCD列表 -->
+    <select id="selectDistinctVcdsByProjectId" parameterType="java.util.Map" resultType="java.lang.String">
+        SELECT DISTINCT vcd
+        FROM sas_codelist_data
+        WHERE project_id = #{projectId} AND username = #{username}
+        ORDER BY vcd
+    </select>
+    
+</mapper>

@@ -1,0 +1,47 @@
+server:
+  port: 9201
+  connection-timeout: 120000
+  tomcat:
+    connection-timeout: 120000
+    max-connections: 1000
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+
+spring:
+  profiles:
+    active: dev
+  freemarker:
+    enabled: false
+    check-template-location: false
+  thymeleaf:
+    enabled: false
+    check-template-location: false
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/define_db?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:123123}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 50MB
+      max-request-size: 50MB
+  flyway:
+    enabled: false
+
+mybatis:
+  mapper-locations: classpath*:com/stat/dal/mapper/*.xml
+  type-aliases-package: com.stat.common.entity,com.stat.dal.po
+  configuration:
+    map-underscore-to-camel-case: true
+
+app:
+  upload:
+    path: C:/Project_Web/019_defineXML/uploads
+  python:
+    path: C:/Project_Web/019_defineXML/Python
+  projects:
+    base-path: C:/Project_Web/019_defineXML/projects

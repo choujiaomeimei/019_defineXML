@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.stat.dal.mapper.VlmDataMapper">
+    
+    <resultMap id="BaseResultMap" type="com.stat.dal.po.VlmDataPO">
+        <id column="id" property="id" jdbcType="BIGINT"/>
+        <result column="project_id" property="projectId" jdbcType="VARCHAR"/>
+        <result column="dataset" property="dataset" jdbcType="VARCHAR"/>
+        <result column="variable" property="variable" jdbcType="VARCHAR"/>
+        <result column="where_clause" property="whereClause" jdbcType="VARCHAR"/>
+        <result column="label" property="label" jdbcType="VARCHAR"/>
+        <result column="data_type" property="dataType" jdbcType="VARCHAR"/>
+        <result column="length" property="length" jdbcType="VARCHAR"/>
+        <result column="significant_digits" property="significantDigits" jdbcType="VARCHAR"/>
+        <result column="format" property="format" jdbcType="VARCHAR"/>
+        <result column="mandatory" property="mandatory" jdbcType="VARCHAR"/>
+        <result column="assigned_value" property="assignedValue" jdbcType="VARCHAR"/>
+        <result column="codelist" property="codelist" jdbcType="VARCHAR"/>
+        <result column="controlled_terms_or_format" property="controlledTermsOrFormat" jdbcType="VARCHAR"/>
+        <result column="origin" property="origin" jdbcType="VARCHAR"/>
+        <result column="source" property="source" jdbcType="VARCHAR"/>
+        <result column="pages" property="pages" jdbcType="VARCHAR"/>
+        <result column="derivation_comment" property="derivationComment" jdbcType="LONGVARCHAR"/>
+        <result column="method" property="method" jdbcType="VARCHAR"/>
+        <result column="predecessor" property="predecessor" jdbcType="VARCHAR"/>
+        <result column="comment" property="comment" jdbcType="LONGVARCHAR"/>
+        <result column="developer_notes" property="developerNotes" jdbcType="LONGVARCHAR"/>
+        <result column="category" property="category" jdbcType="VARCHAR"/>
+        <result column="sort_order" property="sortOrder" jdbcType="INTEGER"/>
+        <result column="created_time" property="createdTime" jdbcType="TIMESTAMP"/>
+        <result column="updated_time" property="updatedTime" jdbcType="TIMESTAMP"/>
+        <result column="created_by" property="createdBy" jdbcType="VARCHAR"/>
+        <result column="updated_by" property="updatedBy" jdbcType="VARCHAR"/>
+    </resultMap>
+    
+    <sql id="Base_Column_List">
+        id, project_id, dataset, variable, where_clause, label,
+        data_type, length, significant_digits, format, mandatory, assigned_value, codelist,
+        controlled_terms_or_format, origin, source, pages, derivation_comment,
+        method, predecessor, comment, developer_notes, category, sort_order,
+        created_time, updated_time, created_by, updated_by
+    </sql>
+    
+    <!-- 插入VLM数据 -->
+    <insert id="insert" parameterType="com.stat.dal.po.VlmDataPO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO sas_vlm_data (
+            project_id, username, dataset, variable, where_clause, label,
+            data_type, length, significant_digits, format, mandatory, assigned_value, codelist,
+            controlled_terms_or_format, origin, source, pages, derivation_comment,
+            method, predecessor, comment, developer_notes, category, sort_order,
+            created_by, updated_by
+        ) VALUES (
+            #{projectId}, #{username}, #{dataset}, #{variable}, #{whereClause}, #{label},
+            #{dataType}, #{length}, #{significantDigits}, #{format}, #{mandatory}, #{assignedValue}, #{codelist},
+            #{controlledTermsOrFormat}, #{origin}, #{source}, #{pages}, #{derivationComment},
+            #{method}, #{predecessor}, #{comment}, #{developerNotes}, #{category}, #{sortOrder},
+            #{createdBy}, #{updatedBy}
+        )
+    </insert>
+    
+    <!-- 根据ID更新VLM数据 -->
+    <update id="updateById" parameterType="com.stat.dal.po.VlmDataPO">
+        UPDATE sas_vlm_data SET
+            dataset = #{dataset},
+            variable = #{variable},
+            where_clause = #{whereClause},
+            label = #{label},
+            data_type = #{dataType},
+            length = #{length},
+            significant_digits = #{significantDigits},
+            format = #{format},
+            mandatory = #{mandatory},
+            assigned_value = #{assignedValue},
+            codelist = #{codelist},
+            controlled_terms_or_format = #{controlledTermsOrFormat},
+            origin = #{origin},
+            source = #{source},
+            pages = #{pages},
+            derivation_comment = #{derivationComment},
+            method = #{method},
+            predecessor = #{predecessor},
+            comment = #{comment},
+            developer_notes = #{developerNotes},
+            category = #{category},
+            sort_order = #{sortOrder},
+            updated_by = #{updatedBy},
+            updated_time = NOW()
+        WHERE id = #{id}
+    </update>
+    
+    <!-- 根据ID删除VLM数据 -->
+    <delete id="deleteById" parameterType="java.lang.Long">
+        DELETE FROM sas_vlm_data WHERE id = #{id}
+    </delete>
+    
+    <!-- 根据项目ID删除所有VLM数据 -->
+    <delete id="deleteByProjectId" parameterType="java.util.Map">
+        DELETE FROM sas_vlm_data WHERE project_id = #{projectId} AND username = #{username}
+    </delete>
+    
+    <!-- 根据ID查询VLM数据 -->
+    <select id="selectById" parameterType="java.lang.Long" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sas_vlm_data
+        WHERE id = #{id}
+    </select>
+    
+    <!-- 根据项目ID查询VLM数据列表 -->
+    <select id="selectByProjectId" parameterType="java.util.Map" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sas_vlm_data
+        WHERE project_id = #{projectId} AND username = #{username}
+        ORDER BY dataset ASC, sort_order ASC
+    </select>
+    
+    <!-- 根据项目ID和数据集查询VLM数据列表 -->
+    <select id="selectByProjectIdAndDataset" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sas_vlm_data
+        WHERE project_id = #{projectId} AND username = #{username}
+        <if test="dataset != null and dataset != ''">
+            AND dataset = #{dataset}
+        </if>
+        ORDER BY sort_order ASC
+    </select>
+    
+    <!-- 分页查询VLM数据 -->
+    <select id="selectByPage" parameterType="java.util.Map" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sas_vlm_data
+        <where>
+            <if test="username != null and username != ''">
+                AND username = #{username}
+            </if>
+            <if test="projectId != null and projectId != ''">
+                AND project_id = #{projectId}
+            </if>
+            <if test="dataset != null and dataset != ''">
+                AND dataset = #{dataset}
+            </if>
+            <if test="variable != null and variable != ''">
+                AND variable LIKE CONCAT('%', #{variable}, '%')
+            </if>
+            <if test="label != null and label != ''">
+                AND label LIKE CONCAT('%', #{label}, '%')
+            </if>
+        </where>
+        ORDER BY sort_order ASC
+        <if test="offset != null and limit != null">
+            LIMIT #{offset}, #{limit}
+        </if>
+    </select>
+    
+    <!-- 查询VLM数据总数 -->
+    <select id="countByParams" parameterType="java.util.Map" resultType="java.lang.Integer">
+        SELECT COUNT(*)
+        FROM sas_vlm_data
+        <where>
+            <if test="username != null and username != ''">
+                AND username = #{username}
+            </if>
+            <if test="projectId != null and projectId != ''">
+                AND project_id = #{projectId}
+            </if>
+            <if test="dataset != null and dataset != ''">
+                AND dataset = #{dataset}
+            </if>
+            <if test="variable != null and variable != ''">
+                AND variable LIKE CONCAT('%', #{variable}, '%')
+            </if>
+            <if test="label != null and label != ''">
+                AND label LIKE CONCAT('%', #{label}, '%')
+            </if>
+        </where>
+    </select>
+    
+    <!-- 批量更新排序顺序 -->
+    <update id="batchUpdateSortOrder" parameterType="java.util.List">
+        <foreach collection="list" item="item" index="index" separator=";">
+            UPDATE sas_vlm_data SET sort_order = #{item.sortOrder} WHERE id = #{item.id}
+        </foreach>
+    </update>
+    
+    <!-- 获取项目中所有不同的数据集列表 -->
+    <select id="selectDistinctDatasetsByProjectId" parameterType="java.util.Map" resultType="java.lang.String">
+        SELECT DISTINCT dataset
+        FROM sas_vlm_data
+        WHERE project_id = #{projectId} AND username = #{username}
+        ORDER BY dataset
+    </select>
+    
+</mapper>

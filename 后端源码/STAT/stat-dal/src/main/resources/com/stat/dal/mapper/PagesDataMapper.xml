@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.stat.dal.mapper.PagesDataMapper">
+
+    <resultMap id="BaseResultMap" type="com.stat.dal.po.PagesDataPO">
+        <id column="id" property="id" jdbcType="BIGINT"/>
+        <result column="project_id" property="projectId" jdbcType="VARCHAR"/>
+        <result column="username" property="username" jdbcType="VARCHAR"/>
+        <result column="dataset" property="dataset" jdbcType="VARCHAR"/>
+        <result column="variable" property="variable" jdbcType="VARCHAR"/>
+        <result column="where_clause" property="whereClause" jdbcType="VARCHAR"/>
+        <result column="pages" property="pages" jdbcType="VARCHAR"/>
+        <result column="origin" property="origin" jdbcType="VARCHAR"/>
+        <result column="sort_order" property="sortOrder" jdbcType="INTEGER"/>
+        <result column="created_time" property="createdTime" jdbcType="TIMESTAMP"/>
+        <result column="updated_time" property="updatedTime" jdbcType="TIMESTAMP"/>
+        <result column="created_by" property="createdBy" jdbcType="VARCHAR"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, project_id, username, dataset, variable, where_clause, pages, origin, sort_order,
+        created_time, updated_time, created_by
+    </sql>
+
+    <insert id="insert" parameterType="com.stat.dal.po.PagesDataPO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO sas_pages_data (
+            project_id, username, dataset, variable, where_clause, pages, origin, sort_order, created_by
+        ) VALUES (
+            #{projectId}, #{username}, #{dataset}, #{variable}, #{whereClause}, #{pages}, #{origin}, #{sortOrder}, #{createdBy}
+        )
+    </insert>
+
+    <update id="updateById" parameterType="com.stat.dal.po.PagesDataPO">
+        UPDATE sas_pages_data SET
+            dataset = #{dataset},
+            variable = #{variable},
+            where_clause = #{whereClause},
+            pages = #{pages},
+            origin = #{origin},
+            sort_order = #{sortOrder},
+            updated_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById" parameterType="java.lang.Long">
+        DELETE FROM sas_pages_data WHERE id = #{id}
+    </delete>
+
+    <delete id="deleteByProjectId" parameterType="java.util.Map">
+        DELETE FROM sas_pages_data WHERE project_id = #{projectId} AND username = #{username}
+    </delete>
+
+    <select id="selectById" parameterType="java.lang.Long" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sas_pages_data WHERE id = #{id}
+    </select>
+
+    <select id="selectByProjectId" parameterType="java.util.Map" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sas_pages_data WHERE project_id = #{projectId} AND username = #{username}
+        ORDER BY sort_order ASC
+    </select>
+
+    <select id="selectByProjectIdAndDataset" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sas_pages_data
+        WHERE project_id = #{projectId} AND username = #{username}
+        <if test="dataset != null and dataset != ''">
+            AND dataset = #{dataset}
+        </if>
+        ORDER BY sort_order ASC
+    </select>
+
+    <select id="selectDistinctDatasetsByProjectId" parameterType="java.util.Map" resultType="java.lang.String">
+        SELECT DISTINCT dataset
+        FROM sas_pages_data
+        WHERE project_id = #{projectId} AND username = #{username}
+        ORDER BY dataset
+    </select>
+
+</mapper>

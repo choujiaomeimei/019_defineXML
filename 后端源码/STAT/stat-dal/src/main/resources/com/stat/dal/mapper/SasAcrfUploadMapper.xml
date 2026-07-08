@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.stat.dal.mapper.SasAcrfUploadMapper">
+
+    <!-- 通用结果映射 -->
+    <resultMap id="BaseResultMap" type="com.stat.common.entity.SasAcrfUpload">
+        <id column="id" property="id" jdbcType="BIGINT"/>
+        <result column="file_id" property="fileId" jdbcType="VARCHAR"/>
+        <result column="project_id" property="projectId" jdbcType="VARCHAR"/>
+        <result column="original_name" property="originalName" jdbcType="VARCHAR"/>
+        <result column="server_file_name" property="serverFileName" jdbcType="VARCHAR"/>
+        <result column="file_path" property="filePath" jdbcType="VARCHAR"/>
+        <result column="file_size" property="fileSize" jdbcType="BIGINT"/>
+        <result column="upload_time" property="uploadTime" jdbcType="TIMESTAMP"/>
+        <result column="process_status" property="processStatus" jdbcType="TINYINT"/>
+        <result column="process_time" property="processTime" jdbcType="TIMESTAMP"/>
+        <result column="output_file_path" property="outputFilePath" jdbcType="VARCHAR"/>
+        <result column="error_message" property="errorMessage" jdbcType="LONGVARCHAR"/>
+        <result column="create_time" property="createTime" jdbcType="TIMESTAMP"/>
+        <result column="update_time" property="updateTime" jdbcType="TIMESTAMP"/>
+        <result column="deleted" property="deleted" jdbcType="TINYINT"/>
+    </resultMap>
+
+    <!-- 基础字段 -->
+    <sql id="Base_Column_List">
+        id, file_id, project_id, original_name, server_file_name, file_path, file_size, upload_time,
+        process_status, process_time, output_file_path, error_message, create_time, update_time, deleted
+    </sql>
+
+    <!-- 插入上传记录 -->
+    <insert id="insert" parameterType="com.stat.common.entity.SasAcrfUpload" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO sas_acrf_upload (
+            file_id, project_id, original_name, server_file_name, file_path, file_size, upload_time,
+            process_status, process_time, output_file_path, error_message, create_time, update_time, deleted
+        ) VALUES (
+            #{fileId}, #{projectId}, #{originalName}, #{serverFileName}, #{filePath}, #{fileSize}, #{uploadTime},
+            #{processStatus}, #{processTime}, #{outputFilePath}, #{errorMessage}, NOW(), NOW(), #{deleted}
+        )
+    </insert>
+
+    <!-- 根据ID查询上传记录 -->
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sas_acrf_upload
+        WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <!-- 根据ID更新记录 -->
+    <update id="updateById" parameterType="com.stat.common.entity.SasAcrfUpload">
+        UPDATE sas_acrf_upload
+        SET file_id = #{fileId},
+            project_id = #{projectId},
+            original_name = #{originalName},
+            server_file_name = #{serverFileName},
+            file_path = #{filePath},
+            file_size = #{fileSize},
+            upload_time = #{uploadTime},
+            process_status = #{processStatus},
+            process_time = #{processTime},
+            output_file_path = #{outputFilePath},
+            error_message = #{errorMessage},
+            update_time = NOW(),
+            deleted = #{deleted}
+        WHERE id = #{id}
+    </update>
+
+    <!-- 根据文件ID查询上传记录 -->
+    <select id="selectByFileId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sas_acrf_upload
+        WHERE file_id = #{fileId} AND deleted = 0
+    </select>
+
+    <!-- 查询所有有效的上传记录（按上传时间倒序） -->
+    <select id="selectAllValid" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sas_acrf_upload
+        WHERE deleted = 0
+        ORDER BY upload_time DESC
+    </select>
+
+    <!-- 更新处理状态 -->
+    <update id="updateProcessStatus">
+        UPDATE sas_acrf_upload
+        SET process_status = #{processStatus},
+            process_time = NOW(),
+            <if test="outputFilePath != null">
+                output_file_path = #{outputFilePath},
+            </if>
+            <if test="errorMessage != null">
+                error_message = #{errorMessage},
+            </if>
+            update_time = NOW()
+        WHERE file_id = #{fileId} AND deleted = 0
+    </update>
+
+</mapper>

@@ -1,0 +1,43 @@
+# Dependencies & build output
+node_modules/
+.npm-cache/
+**/target/
+dist/
+dist-ssr/
+*.local
+
+# Large reference / dataset files (GitHub 100MB limit)
+**/*.xpt
+Define-XML/Project Ref/
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# IDE & tooling
+.idea/
+.vscode/
+.cursor/
+.claude/
+
+# Runtime & uploads
+uploads/
+APP_ID_IS_UNDEFINED/
+
+# OS & temp files
+.DS_Store
+Thumbs.db
+~$*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*

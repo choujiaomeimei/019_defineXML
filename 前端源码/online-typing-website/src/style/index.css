@@ -1,0 +1,176 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+  /* Color: Primary */
+  --saas-primary: #6366f1;
+  --saas-primary-light: #818cf8;
+  --saas-primary-lighter: #a5b4fc;
+  --saas-primary-bg: #eef2ff;
+  --saas-primary-dark: #4f46e5;
+
+  /* Color: Semantic */
+  --saas-success: #10b981;
+  --saas-success-light: #34d399;
+  --saas-success-bg: #ecfdf5;
+
+  --saas-warning: #f59e0b;
+  --saas-warning-light: #fbbf24;
+  --saas-warning-bg: #fffbeb;
+
+  --saas-danger: #ef4444;
+  --saas-danger-light: #f87171;
+  --saas-danger-bg: #fef2f2;
+  --saas-danger-border: #fecaca;
+
+  --saas-info: #6b7280;
+
+  /* Color: Text */
+  --saas-text-primary: #111827;
+  --saas-text-secondary: #6b7280;
+  --saas-text-tertiary: #9ca3af;
+  --saas-text-inverse: #ffffff;
+
+  /* Color: Background */
+  --saas-bg-page: #f8fafc;
+  --saas-bg-card: #ffffff;
+  --saas-bg-sidebar: #1e1b4b;
+  --saas-bg-sidebar-hover: #312e81;
+  --saas-bg-sidebar-active: #4338ca;
+  --saas-bg-input: #f9fafb;
+  --saas-bg-hover: #f3f4f6;
+
+  /* Color: Border */
+  --saas-border: #e5e7eb;
+  --saas-border-light: #f3f4f6;
+
+  /* Elevation */
+  --saas-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --saas-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --saas-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --saas-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --saas-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+
+  /* Radius */
+  --saas-radius-sm: 6px;
+  --saas-radius-md: 8px;
+  --saas-radius-lg: 12px;
+  --saas-radius-xl: 16px;
+  --saas-radius-full: 9999px;
+
+  /* Spacing (4px base grid) */
+  --saas-space-1: 4px;
+  --saas-space-2: 8px;
+  --saas-space-3: 12px;
+  --saas-space-4: 16px;
+  --saas-space-5: 20px;
+  --saas-space-6: 24px;
+  --saas-space-7: 28px;
+  --saas-space-8: 32px;
+  --saas-space-10: 40px;
+  --saas-space-12: 48px;
+
+  /* Typography: Size */
+  --saas-text-xs: 0.75rem;
+  --saas-text-sm: 0.8125rem;
+  --saas-text-base: 0.875rem;
+  --saas-text-lg: 1rem;
+  --saas-text-xl: 1.125rem;
+  --saas-text-2xl: 1.25rem;
+  --saas-text-3xl: 1.5rem;
+
+  /* Typography: Weight */
+  --saas-font-normal: 400;
+  --saas-font-medium: 500;
+  --saas-font-semibold: 600;
+  --saas-font-bold: 700;
+
+  /* Layout */
+  --saas-sidebar-width: 56px;
+  --saas-sidebar-secondary-width: 260px;
+  --saas-topbar-height: 64px;
+  --saas-content-max-width: 1800px;
+  --saas-content-padding: var(--saas-space-6) var(--saas-space-7);
+
+  /* Motion */
+  --saas-transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --saas-transition-slow: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+#app {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: var(--saas-text-primary);
+  background: var(--saas-bg-page);
+  height: 100%;
+  overflow: hidden;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--saas-border);
+  border-radius: var(--saas-radius-sm);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--saas-text-tertiary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.el-button--primary {
+  --el-button-bg-color: var(--saas-primary);
+  --el-button-border-color: var(--saas-primary);
+  --el-button-hover-bg-color: var(--saas-primary-dark);
+  --el-button-hover-border-color: var(--saas-primary-dark);
+  --el-button-active-bg-color: var(--saas-primary-dark);
+  --el-button-active-border-color: var(--saas-primary-dark);
+}
+
+:root {
+  --el-border-radius-base: var(--saas-radius-lg);
+  --el-box-shadow-light: var(--saas-shadow-xs);
+}
+
+.el-message-box {
+  border-radius: var(--saas-radius-lg);
+}
+
+.el-dialog {
+  border-radius: var(--saas-radius-lg);
+}
+
+.el-card {
+  border-radius: var(--saas-radius-lg);
+  border: 1px solid var(--saas-border-light);
+  box-shadow: var(--saas-shadow-xs);
+}

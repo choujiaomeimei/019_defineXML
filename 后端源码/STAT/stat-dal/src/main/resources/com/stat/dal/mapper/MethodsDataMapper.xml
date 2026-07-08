@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.stat.dal.mapper.MethodsDataMapper">
+
+    <resultMap id="BaseResultMap" type="com.stat.dal.po.MethodsDataPO">
+        <id column="id" property="id" jdbcType="BIGINT"/>
+        <result column="project_id" property="projectId" jdbcType="VARCHAR"/>
+        <result column="username" property="username" jdbcType="VARCHAR"/>
+        <result column="method_id" property="methodId" jdbcType="VARCHAR"/>
+        <result column="name" property="name" jdbcType="VARCHAR"/>
+        <result column="type" property="type" jdbcType="VARCHAR"/>
+        <result column="description" property="description" jdbcType="VARCHAR"/>
+        <result column="expression_context" property="expressionContext" jdbcType="VARCHAR"/>
+        <result column="expression_code" property="expressionCode" jdbcType="VARCHAR"/>
+        <result column="document" property="document" jdbcType="VARCHAR"/>
+        <result column="pages" property="pages" jdbcType="VARCHAR"/>
+        <result column="sort_order" property="sortOrder" jdbcType="INTEGER"/>
+        <result column="created_time" property="createdTime" jdbcType="TIMESTAMP"/>
+        <result column="updated_time" property="updatedTime" jdbcType="TIMESTAMP"/>
+        <result column="created_by" property="createdBy" jdbcType="VARCHAR"/>
+        <result column="updated_by" property="updatedBy" jdbcType="VARCHAR"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, project_id, username, method_id, name, type, description,
+        expression_context, expression_code, document, pages,
+        sort_order, created_time, updated_time, created_by, updated_by
+    </sql>
+
+    <insert id="insert" parameterType="com.stat.dal.po.MethodsDataPO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO sas_methods_data (
+            project_id, username, method_id, name, type, description,
+            expression_context, expression_code, document, pages,
+            sort_order, created_by
+        ) VALUES (
+            #{projectId}, #{username}, #{methodId}, #{name}, #{type}, #{description},
+            #{expressionContext}, #{expressionCode}, #{document}, #{pages},
+            #{sortOrder}, #{createdBy}
+        )
+    </insert>
+
+    <update id="updateById" parameterType="com.stat.dal.po.MethodsDataPO">
+        UPDATE sas_methods_data SET
+            method_id = #{methodId},
+            name = #{name},
+            type = #{type},
+            description = #{description},
+            expression_context = #{expressionContext},
+            expression_code = #{expressionCode},
+            document = #{document},
+            pages = #{pages},
+            sort_order = #{sortOrder},
+            updated_time = NOW(),
+            updated_by = #{updatedBy}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM sas_methods_data WHERE id = #{id}
+    </delete>
+
+    <delete id="deleteByProjectId">
+        DELETE FROM sas_methods_data WHERE project_id = #{projectId} AND username = #{username}
+    </delete>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sas_methods_data WHERE id = #{id}
+    </select>
+
+    <select id="selectByProjectId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sas_methods_data
+        WHERE project_id = #{projectId} AND username = #{username}
+        ORDER BY sort_order ASC
+    </select>
+
+</mapper>

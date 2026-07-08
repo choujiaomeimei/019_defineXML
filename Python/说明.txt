@@ -1,0 +1,137 @@
+# SAS P21 Define.xml生成器实现步骤
+
+## 初始化阶段
+
+### Logical Step1: 路径设置
+- 设置基础路径：&rpath, &basedir, &specdir, &p21dir, &ctdir
+- 定义文件名：&p21spec, &spec, &ct_version, &outspec
+- 创建目录结构：data/ct, data/SDTM/input_p21, data/SDTM/input_spec, data/SDTM/out
+- 设置库引用：libname ct, in_p21, in_spec, out
+
+### Logical Step2: 导入数据文件
+- 导入空白P21 Excel：Define, Datasets, Variables工作表
+- 导入项目Spec Excel：TOC, Codelists, VLM工作表  
+- 导入标准CT文件：SDTM Terminology, Chinese Translation, ADaM Terminology
+- 导入项目Spec的各个Domain工作表（DM, AE, VS, LB等）
+- 从TS数据集获取项目信息：protocol, study title
+
+## 业务逻辑处理阶段
+
+### Logical Step3: 处理Define表
+- 更新研究基础信息：StudyName, StudyDescription, ProtocolName
+- 设置语言参数：CN/EN
+- 生成数据集列表：&dsgroup
+
+### Logical Step4: 处理Comments表
+- 4.1 来自Datasets的comment：解析{#document#pages}格式
+- 4.2 来自Variables的comment：处理Derived Method中的注释
+- 4.3 来自VLM的comment：处理ValueLevel的注释
+- 4.4 对于SUPP数据集：添加通用Comment
+- 合并所有comment数据到out.Comments
+
+### Logical Step5: 处理Datasets表
+- 合并P21 datasets和项目spec datasets
+- 更新字段：Label, Class, Structure, Key Variables
+- 如果是中文项目，SUPP数据集需要特殊处理
+- 关联Comments表的ID
+
+### Logical Step6: 处理Methods表
+- 6.1 来自Variables的method：处理Derived Method中的算法
+- 6.2 来自VLM的method：处理ValueLevel的算法
+- 6.3 对于SUPP数据集：添加通用Method
+- 解析{#document#pages}格式，设置Type（Computation/Imputation）
+- 合并所有method数据到out.Methods
+
+### Logical Step7: 处理Dictionaries表
+- 从项目spec的codelists中筛选有VERSION的记录
+- 映射字段：Id, Name, Data_Type
+- 输出到out.Dictionaries
+
+### Logical Step8: 处理Codelists表
+- 8.1 处理Domain变量：DOMAIN, RDOMAIN的特殊codelist
+- 8.2 处理项目spec中的codelists（无VERSION的记录）
+- 8.3 与标准CT mapping：获取NCI Codelist Code和Term Code
+  - 第一步：通过match_name在SDTM Terminology表中查找Codelist_Code为空且Codelist_Name匹配的记录
+  - 第二步：通过term在SDTM Terminology表中查找Codelist_Code等于第一步找到的code且CDISC_Submission_Value匹配的记录
+  - 获取CDISC_SYNONYM_S_作为Decoded Value
+- 8.4 处理中文翻译（如果是中文项目）
+- 8.5 处理ADaM CT（如果是ADaM项目）
+- 8.6 确保包含所有P21标准字段：
+  - ID, Name, NCI Codelist Code, Data Type, Terminology
+  - Comment, Order, Term, NCI Term Code, Decoded Value
+- 8.7 处理所有codelists记录（不再限制数量）
+- 8.8 按Version字段分类：
+  - 有Version的记录 → Dictionaries表
+  - 无Version的记录 → Codelists表
+- 8.9 处理match_name逻辑：
+  - 如果Name包含'subset'，取逗号前的部分
+  - 如果Name包含'yes only'，取括号前的部分
+  - 否则使用完整的Name
+- 合并所有codelist数据到out.Codelists
+
+### Logical Step9: 处理Documents表
+- 9.1 从Methods和Comments中获取使用外部文档的衍生规则
+- 9.2 与项目spec拼接，获取document和pages信息
+- 9.3 根据IG类型生成附加文档：csdrg.pdf, acrf.pdf等
+- 合并所有document数据到out.Documents
+
+### Logical Step10: 处理ValueLevel表
+- 10.1 处理项目spec的VLM数据
+- 10.2 对于SUPP数据集：从Variables衍生VLM记录
+- 10.3 从XPT数据集获取变量的真实长度和数据类型
+- 10.4 关联Methods和Comments的ID
+- 10.5 计算Length, Significant Digits, Data Type
+- 10.6 只输出P21标准字段，移除SAS额外字段（RESULT, MAX_LEN1, MAX_DIGIT, TYPE_A, MAX_LEN, Derivation/Comment）
+- 输出到out.ValueLevel
+
+### Logical Step11: 处理Variables表
+- 11.1 获取VLM中各变量的最大长度
+- 11.2 分离SUPP和非SUPP变量
+- 11.3 处理非SUPP变量：从项目spec获取详细信息
+- 11.4 处理SUPP变量：
+  - 保留原P21空白spec中的SUPP变量
+  - 如果有项目spec中的SUPP sheet，则与之对应
+  - 特殊处理RDOMAIN变量的Codelist（从数据集名提取domain）
+- 11.5 关联Methods和Comments的ID
+- 11.6 处理Common变量的来源数据集
+- 11.7 更新Length, Data Type, Format等字段
+- 11.8 合并SUPP和非SUPP变量
+- 输出到out.Variables
+
+## 输出阶段
+
+### Logical Step12: 导出Excel文件
+- 按顺序导出所有工作表到最终的define.xlsx文件：
+  1. Define
+  2. Datasets  
+  3. Variables
+  4. ValueLevel
+  5. Codelists
+  6. Dictionaries
+  7. Methods
+  8. Comments
+  9. Documents
+
+### Logical Step13: 质量检查
+- 检查SDTM和ADaM共同变量的label是否一致
+- 验证数据完整性和格式正确性
+
+## 关键业务逻辑
+
+### 数据依赖关系
+1. Comments和Methods需要先处理（供其他表引用）
+2. Variables和ValueLevel需要Methods和Comments数据
+3. ValueLevel需要从XPT数据集获取真实长度
+4. Codelists需要与标准CT进行mapping
+
+### 特殊处理规则
+1. SUPP数据集需要特殊处理（中文项目）
+2. Domain变量（DOMAIN, RDOMAIN）需要特殊codelist
+3. 日期时间变量需要特殊格式处理
+4. 中文项目需要处理中文翻译
+
+### 数据解析规则
+1. {#document#pages}格式解析：提取文档和页码信息
+2. $@$分隔符处理：区分comment和method内容
+3. 数据类型推断：基于变量名和内容判断
+4. 长度计算：从实际数据中获取最大长度

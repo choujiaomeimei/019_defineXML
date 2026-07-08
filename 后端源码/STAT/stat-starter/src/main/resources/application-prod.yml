@@ -1,0 +1,106 @@
+server:
+  port: 9201
+  # 设置服务器连接超时时间，适应导出等耗时操作  
+  connection-timeout: 120000
+  tomcat:
+    connection-timeout: 120000
+    max-connections: 1000
+  # 配置SSL支持（如果有证书的话）
+  # ssl:
+  #   enabled: true
+  #   key-store: classpath:keystore.p12
+  #   key-store-password: password
+  #   key-store-type: PKCS12
+
+mybatis:
+  type-aliases-package: com.stat.dal.po
+  mapper-locations: classpath:com.stat.dal.mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+    cache-enabled: true
+
+spring:
+   application:
+    name: stat
+   datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    driver-class-name: com.mysql.jdbc.Driver
+    url: jdbc:mysql://82.157.243.132:3306/define_db?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&autoReconnect=true&failOverReadOnly=false&useSSL=false
+    username: crf
+    password: 6369b2886fe16510
+    druid:
+      # 初始连接数
+      initial-size: 5
+      # 最小连接池数量
+      min-idle: 5
+      # 最大连接池数量
+      max-active: 20
+      # 获取连接等待超时时间
+      max-wait: 120000
+      # 检测间隔时间，检测需要关闭的空闲连接
+      time-between-eviction-runs-millis: 60000
+      # 连接在池中最小生存的时间
+      min-evictable-idle-time-millis: 300000
+      # 检测连接是否有效
+      validation-query: SELECT 1
+      # 申请连接的时候检测，如果空闲时间大于timeBetweenEvictionRunsMillis，执行validationQuery检测连接是否有效
+      test-while-idle: true
+      # 申请连接时执行validationQuery检测连接是否有效，做了这个配置会降低性能
+      test-on-borrow: false
+      # 归还连接时执行validationQuery检测连接是否有效，做了这个配置会降低性能
+      test-on-return: false
+      # 是否缓存preparedStatement，也就是PSCache
+      pool-prepared-statements: true
+      # 要启用PSCache，必须配置大于0，当大于0时，poolPreparedStatements自动触发修改为true
+      max-pool-prepared-statement-per-connection-size: 20
+      # 连接出错后再尝试连接的次数
+      connection-error-retry-attempts: 3
+      # 连接出错后中断操作
+      break-after-acquire-failure: true
+      # 打开mergeSql功能；慢SQL记录
+      filter:
+        stat:
+          enabled: true
+          merge-sql: true
+          slow-sql-millis: 5000
+   mvc:
+     static-path-pattern: /static/**
+     cors:
+       allowed-origins: "*"
+       allowed-methods: "*"
+       allowed-headers: "*"
+       allow-credentials: true
+       max-age: 3600
+   servlet:
+     multipart:
+       max-file-size: 1024MB
+       max-request-size: 1024MB
+
+mybatis-plus:
+  configuration:
+    # 生产环境关闭SQL详细日志输出，提升性能
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+
+logging:
+  level:
+    root: WARN
+    # 应用核心包只记录重要信息
+    com.stat: INFO
+    com.stat.service: INFO
+    com.stat.web.controller: INFO
+    # 关闭第三方框架的详细日志
+    org.springframework: WARN
+    org.apache.ibatis: WARN
+    com.alibaba.druid: WARN
+    # 数据库相关日志关闭
+    com.stat.dal.mapper: WARN
+    java.sql: WARN
+    org.mybatis: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n"
+  file:
+    name: logs/stat-prod.log
+    max-size: 50MB
+    max-history: 60
+    # 启用日志文件压缩
+    total-size-cap: 2GB

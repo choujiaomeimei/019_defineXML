@@ -1,0 +1,268 @@
+<template>
+  <div class="comments-edit-page">
+    <div class="page-toolbar">
+      <div class="toolbar-left">
+        <h3 class="page-title">Comments</h3>
+        <span class="page-desc">注释定义 (Variable Comments)</span>
+      </div>
+      <div class="toolbar-right">
+        <el-button type="primary" size="small" @click="showAddDialog">
+          <el-icon><Plus /></el-icon> 新增
+        </el-button>
+        <el-button size="small" @click="refreshData">
+          <el-icon><Refresh /></el-icon> 刷新
+        </el-button>
+      </div>
+    </div>
+
+    <div class="table-content">
+      <el-table
+        :data="tableData"
+        v-loading="tableLoading"
+        border
+        stripe
+        size="small"
+        max-height="calc(100vh - 200px)"
+        @cell-dblclick="handleCellDblClick"
+      >
+        <el-table-column prop="commentId" label="ID" width="180">
+          <template #default="{ row }">
+            <el-input v-if="isEditing(row, 'commentId')" v-model="editForm.commentId" size="small"
+              @keyup.enter="saveRow(row)" @keyup.escape="cancelEdit" />
+            <span v-else :title="row.commentId">{{ row.commentId }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="description" label="Description" min-width="400">
+          <template #default="{ row }">
+            <el-input v-if="isEditing(row, 'description')" v-model="editForm.description" size="small" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
+              @keyup.escape="cancelEdit" />
+            <span v-else :title="row.description" class="cell-text">{{ row.description || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="document" label="Document" width="200">
+          <template #default="{ row }">
+            <el-input v-if="isEditing(row, 'document')" v-model="editForm.document" size="small"
+              @keyup.enter="saveRow(row)" @keyup.escape="cancelEdit" />
+            <span v-else>{{ row.document || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="pages" label="Pages" width="200">
+          <template #default="{ row }">
+            <el-input v-if="isEditing(row, 'pages')" v-model="editForm.pages" size="small"
+              @keyup.enter="saveRow(row)" @keyup.escape="cancelEdit" />
+            <span v-else>{{ row.pages || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="120" fixed="right">
+          <template #default="{ row }">
+            <template v-if="editingRowId === row.id && editingField === '__row__'">
+              <el-button type="primary" link size="small" @click="saveRow(row)">保存</el-button>
+              <el-button link size="small" @click="cancelEdit">取消</el-button>
+            </template>
+            <template v-else>
+              <el-button type="primary" link size="small" @click="startEditRow(row)">编辑</el-button>
+              <el-popconfirm title="确定删除？" @confirm="deleteRow(row)">
+                <template #reference>
+                  <el-button type="danger" link size="small">删除</el-button>
+                </template>
+              </el-popconfirm>
+            </template>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+
+    <el-dialog v-model="addDialogVisible" title="新增Comment" width="600px" destroy-on-close>
+      <el-form :model="addForm" label-width="120px" size="small">
+        <el-form-item label="ID"><el-input v-model="addForm.commentId" placeholder="e.g. AE.AESER" /></el-form-item>
+        <el-form-item label="Description"><el-input v-model="addForm.description" type="textarea" :rows="3" /></el-form-item>
+        <el-form-item label="Document"><el-input v-model="addForm.document" /></el-form-item>
+        <el-form-item label="Pages"><el-input v-model="addForm.pages" /></el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="addDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="addLoading" @click="submitAdd">确定</el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { Plus, Refresh } from '@element-plus/icons-vue'
+import service from '@/axios'
+
+const props = defineProps({ projectId: String })
+const route = useRoute()
+const baseUrl = import.meta.env.VITE_APP_BASE_URL || ''
+const currentProjectId = computed(() => props.projectId || route.params.projectId)
+
+const tableData = ref([])
+const tableLoading = ref(false)
+
+const editingRowId = ref(null)
+const editingField = ref(null)
+const editForm = reactive({})
+
+const addDialogVisible = ref(false)
+const addLoading = ref(false)
+const addForm = reactive({ commentId: '', description: '', document: '', pages: '' })
+
+const isEditing = (row, field) =>
+  editingRowId.value === row.id && (editingField.value === field || editingField.value === '__row__')
+
+const startEditRow = (row) => {
+  editingRowId.value = row.id
+  editingField.value = '__row__'
+  Object.assign(editForm, row)
+}
+
+const cancelEdit = () => {
+  editingRowId.value = null
+  editingField.value = null
+}
+
+const handleCellDblClick = (row, column) => {
+  if (column.property) {
+    editingRowId.value = row.id
+    editingField.value = column.property
+    Object.assign(editForm, row)
+  }
+}
+
+const loadData = async () => {
+  const pid = currentProjectId.value
+  if (!pid) return
+  tableLoading.value = true
+  try {
+    const res = await service.get(`${baseUrl}/api/comments/project/${pid}`)
+    if (res.data?.success) {
+      tableData.value = res.data.data || []
+    }
+  } catch (e) {
+    console.error('加载Comments数据失败:', e)
+  } finally {
+    tableLoading.value = false
+  }
+}
+
+const refreshData = () => { cancelEdit(); loadData() }
+
+const saveRow = async (row) => {
+  try {
+    const payload = { ...editForm }
+    delete payload.id
+    const res = await service.put(`${baseUrl}/api/comments/${row.id}`, payload)
+    if (res.data?.success) {
+      Object.assign(row, editForm)
+      cancelEdit()
+      ElMessage.success('保存成功')
+    } else {
+      ElMessage.error(res.data?.message || '保存失败')
+    }
+  } catch (e) {
+    ElMessage.error('保存失败: ' + (e.response?.data?.message || e.message))
+  }
+}
+
+const deleteRow = async (row) => {
+  try {
+    const res = await service.delete(`${baseUrl}/api/comments/${row.id}`)
+    if (res.data?.success) {
+      ElMessage.success('删除成功')
+      loadData()
+    } else {
+      ElMessage.error(res.data?.message || '删除失败')
+    }
+  } catch (e) {
+    ElMessage.error('删除失败')
+  }
+}
+
+const showAddDialog = () => {
+  Object.assign(addForm, { commentId: '', description: '', document: '', pages: '' })
+  addDialogVisible.value = true
+}
+
+const submitAdd = async () => {
+  addLoading.value = true
+  try {
+    const payload = { ...addForm, projectId: currentProjectId.value }
+    const res = await service.post(`${baseUrl}/api/comments`, payload)
+    if (res.data?.success) {
+      ElMessage.success('新增成功')
+      addDialogVisible.value = false
+      loadData()
+    } else {
+      ElMessage.error(res.data?.message || '新增失败')
+    }
+  } catch (e) {
+    ElMessage.error('新增失败: ' + (e.response?.data?.message || e.message))
+  } finally {
+    addLoading.value = false
+  }
+}
+
+onMounted(() => {
+  if (currentProjectId.value) loadData()
+})
+</script>
+
+<style scoped lang="less">
+.comments-edit-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--saas-topbar-height, 56px));
+  background: var(--saas-bg-page, #f5f6fa);
+}
+
+.page-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: var(--saas-bg-card, #fff);
+  border-bottom: 1px solid var(--saas-border-light, #e5e7eb);
+
+  .toolbar-left {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+
+  .page-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0;
+    color: var(--saas-text-primary, #1f2937);
+  }
+
+  .page-desc {
+    font-size: 13px;
+    color: var(--saas-text-tertiary, #9ca3af);
+  }
+
+  .toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+}
+
+.table-content {
+  flex: 1;
+  padding: 16px;
+  overflow: auto;
+}
+
+.cell-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-all;
+}
+</style>

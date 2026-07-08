@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.stat.dal.mapper.ProjectSnapshotMapper">
+
+    <resultMap id="BaseResultMap" type="com.stat.common.entity.ProjectSnapshot">
+        <id column="id" property="id" />
+        <result column="project_id" property="projectId" />
+        <result column="snapshot_name" property="snapshotName" />
+        <result column="snapshot_type" property="snapshotType" />
+        <result column="description" property="description" />
+        <result column="spec_data_json" property="specDataJson" />
+        <result column="vlm_data_json" property="vlmDataJson" />
+        <result column="codelist_data_json" property="codelistDataJson" />
+        <result column="config_json" property="configJson" />
+        <result column="created_by" property="createdBy" />
+        <result column="created_time" property="createdTime" />
+    </resultMap>
+
+    <select id="selectByProjectId" resultMap="BaseResultMap">
+        SELECT id, project_id, snapshot_name, snapshot_type, description,
+               created_by, created_time
+        FROM project_snapshot
+        WHERE project_id = #{projectId}
+        ORDER BY created_time DESC
+    </select>
+
+</mapper>

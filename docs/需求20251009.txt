@@ -1,0 +1,14 @@
+我的需求文档E:\JAVAPROJ\008_defineXML\docs\01_开发需求文档.md；
+1、用户登录进去后，创建项目，把对应数据库的数据与界面项目列表绑定，同时也把对应的项目文件夹创建好直接复制demo即可；
+2、进入项目看到项目配置信息，
+3、可多选选择标准（SDTM/ADAM/SEND)
+选择几个给出几个上传文档的界面,例如SDTM（aCRF，P21空Spec，项目Spec，xpt），
+把上传的文件管理项目文件夹下的Upload存档，
+同时也把对应的define中的当前使用的文件更新(如aCRF文件夹下aCRF.PDF，P21空Spec文件夹下P21空Spec.xlsx，项目Spec文件夹下项目Spec.xlsx，xpt文件夹下xpt.xlsx)；
+把P21空Spec更新到对应数据库，项目Spec也更新到数据库；
+点击处理aCRF，调用python程序把aCRF里的注释获取；
+点击生成vlm调用python下对应程序；
+点击生成code_list调用python下对应程序；
+把生成好的VLM和CodeList更新到对应的数据库中，这样界面上就可以对其进行交互操作调序，修改文字等；
+最后把对应的VLM和CodeList整合到项目Spec下对应的sheet  ；点击更新page，调用python程序可以把整合好的项目Spec更新里面的page；这样把需要准备的文件都准备好了。
+在Define制作界面，选择制作SDTM，把需要的一些参数填好后，最后点击生成就会调用python，生成最终的define.xlsx

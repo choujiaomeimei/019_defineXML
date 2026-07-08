@@ -1,0 +1,310 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.stat.dal.mapper.ProjectSpecMapper">
+    
+    <!-- 结果映射 -->
+    <resultMap id="BaseResultMap" type="com.stat.dal.po.ProjectSpecPO">
+        <id column="id" property="id" jdbcType="BIGINT"/>
+        <result column="project_id" property="projectId" jdbcType="VARCHAR"/>
+        <result column="domain" property="domain" jdbcType="VARCHAR"/>
+        <result column="variable" property="variable" jdbcType="VARCHAR"/>
+        <result column="label" property="label" jdbcType="VARCHAR"/>
+        <result column="type" property="type" jdbcType="VARCHAR"/>
+        <result column="length" property="length" jdbcType="VARCHAR"/>
+        <result column="significant_digits" property="significantDigits" jdbcType="VARCHAR"/>
+        <result column="controlled_terms_or_format" property="controlledTermsOrFormat" jdbcType="VARCHAR"/>
+        <result column="cdisc_submission_value" property="cdiscSubmissionValue" jdbcType="VARCHAR"/>
+        <result column="decimal_places" property="decimalPlaces" jdbcType="INTEGER"/>
+        <result column="origin" property="origin" jdbcType="VARCHAR"/>
+        <result column="source" property="source" jdbcType="VARCHAR"/>
+        <result column="role" property="role" jdbcType="VARCHAR"/>
+        <result column="cdisc_notes" property="cdiscNotes" jdbcType="VARCHAR"/>
+        <result column="core" property="core" jdbcType="VARCHAR"/>
+        <result column="codelist" property="codelist" jdbcType="VARCHAR"/>
+        <result column="assigned_value" property="assignedValue" jdbcType="VARCHAR"/>
+        <result column="common" property="common" jdbcType="VARCHAR"/>
+        <result column="format" property="format" jdbcType="VARCHAR"/>
+        <result column="comment" property="comment" jdbcType="LONGVARCHAR"/>
+        <result column="developer_notes" property="developerNotes" jdbcType="LONGVARCHAR"/>
+        <result column="supp" property="supp" jdbcType="VARCHAR"/>
+        <result column="qeval" property="qeval" jdbcType="VARCHAR"/>
+        <result column="mandatory" property="mandatory" jdbcType="VARCHAR"/>
+        <result column="key_sequence" property="keySequence" jdbcType="INTEGER"/>
+        <result column="controlled_terms" property="controlledTerms" jdbcType="VARCHAR"/>
+        <result column="derivation" property="derivation" jdbcType="LONGVARCHAR"/>
+        <result column="predecessor" property="predecessor" jdbcType="VARCHAR"/>
+        <result column="has_no_data" property="hasNoData" jdbcType="VARCHAR"/>
+        <result column="text_content" property="textContent" jdbcType="LONGVARCHAR"/>
+        <result column="method" property="method" jdbcType="VARCHAR"/>
+        <result column="pages" property="pages" jdbcType="VARCHAR"/>
+        <result column="question_text" property="questionText" jdbcType="LONGVARCHAR"/>
+        <result column="prompt" property="prompt" jdbcType="VARCHAR"/>
+        <result column="dataset_class" property="datasetClass" jdbcType="VARCHAR"/>
+        <result column="structure" property="structure" jdbcType="VARCHAR"/>
+        <result column="sort_order" property="sortOrder" jdbcType="INTEGER"/>
+        <result column="created_time" property="createdTime" jdbcType="TIMESTAMP"/>
+        <result column="updated_time" property="updatedTime" jdbcType="TIMESTAMP"/>
+        <result column="created_by" property="createdBy" jdbcType="VARCHAR"/>
+        <result column="updated_by" property="updatedBy" jdbcType="VARCHAR"/>
+    </resultMap>
+    
+    <!-- 基础字段列表 -->
+    <sql id="Base_Column_List">
+        id, project_id, username, domain, variable, label, type, length, significant_digits,
+        controlled_terms_or_format, cdisc_submission_value, decimal_places, origin, source,
+        role, cdisc_notes, core, codelist, assigned_value, common, format, comment,
+        developer_notes, supp, qeval, mandatory, key_sequence, controlled_terms, derivation,
+        predecessor, has_no_data, text_content, method, pages, question_text, prompt,
+        dataset_class, structure, sort_order, created_time, updated_time, created_by, updated_by
+    </sql>
+    
+    <!-- 插入项目Spec数据 -->
+    <insert id="insert" parameterType="com.stat.dal.po.ProjectSpecPO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO sas_project_spec (
+            project_id, username, domain, variable, label, type, length, significant_digits,
+            controlled_terms_or_format, cdisc_submission_value, decimal_places, origin, source,
+            role, cdisc_notes, core, codelist, assigned_value, common, format, comment,
+            developer_notes, supp, qeval, mandatory, key_sequence,
+            controlled_terms, derivation, predecessor, has_no_data, text_content, method,
+            pages, question_text, prompt, dataset_class, structure, sort_order,
+            created_time, updated_time, created_by, updated_by
+        ) VALUES (
+            #{projectId}, #{username}, #{domain}, #{variable}, #{label}, #{type}, #{length}, #{significantDigits},
+            #{controlledTermsOrFormat}, #{cdiscSubmissionValue}, #{decimalPlaces}, #{origin}, #{source},
+            #{role}, #{cdiscNotes}, #{core}, #{codelist}, #{assignedValue}, #{common}, #{format}, #{comment},
+            #{developerNotes}, #{supp}, #{qeval}, #{mandatory}, #{keySequence},
+            #{controlledTerms}, #{derivation}, #{predecessor}, #{hasNoData}, #{textContent}, #{method},
+            #{pages}, #{questionText}, #{prompt}, #{datasetClass}, #{structure}, #{sortOrder},
+            #{createdTime}, #{updatedTime}, #{createdBy}, #{updatedBy}
+        )
+    </insert>
+    
+    <!-- 批量插入项目Spec数据 -->
+    <insert id="batchInsert" parameterType="java.util.List" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO sas_project_spec (
+            project_id, username, domain, variable, label, type, length, significant_digits,
+            controlled_terms_or_format, cdisc_submission_value, decimal_places, origin, source,
+            role, cdisc_notes, core, codelist, assigned_value, common, format, comment,
+            developer_notes, supp, qeval, mandatory, key_sequence,
+            controlled_terms, derivation, predecessor, has_no_data, text_content, method,
+            pages, question_text, prompt, dataset_class, structure, sort_order,
+            created_time, updated_time, created_by, updated_by
+        ) VALUES
+        <foreach collection="list" item="item" separator=",">
+        (
+            #{item.projectId}, #{item.username}, #{item.domain}, #{item.variable}, #{item.label}, #{item.type}, 
+            #{item.length}, #{item.significantDigits}, #{item.controlledTermsOrFormat}, #{item.cdiscSubmissionValue}, 
+            #{item.decimalPlaces}, #{item.origin}, #{item.source}, #{item.role}, #{item.cdiscNotes}, 
+            #{item.core}, #{item.codelist}, #{item.assignedValue}, #{item.common}, #{item.format}, #{item.comment},
+            #{item.developerNotes}, #{item.supp}, #{item.qeval}, #{item.mandatory}, 
+            #{item.keySequence}, #{item.controlledTerms}, #{item.derivation}, #{item.predecessor},
+            #{item.hasNoData}, #{item.textContent}, #{item.method},
+            #{item.pages}, #{item.questionText}, #{item.prompt}, #{item.datasetClass}, 
+            #{item.structure}, #{item.sortOrder}, #{item.createdTime}, #{item.updatedTime}, 
+            #{item.createdBy}, #{item.updatedBy}
+        )
+        </foreach>
+    </insert>
+    
+    <!-- 根据ID更新项目Spec数据 -->
+    <update id="updateById" parameterType="com.stat.dal.po.ProjectSpecPO">
+        UPDATE sas_project_spec 
+        SET project_id = #{projectId}, domain = #{domain}, variable = #{variable}, label = #{label},
+            type = #{type}, length = #{length}, significant_digits = #{significantDigits},
+            controlled_terms_or_format = #{controlledTermsOrFormat}, 
+            cdisc_submission_value = #{cdiscSubmissionValue}, decimal_places = #{decimalPlaces},
+            origin = #{origin}, source = #{source},
+            role = #{role}, cdisc_notes = #{cdiscNotes}, core = #{core}, codelist = #{codelist},
+            assigned_value = #{assignedValue}, common = #{common},
+            format = #{format}, comment = #{comment}, developer_notes = #{developerNotes},
+            supp = #{supp}, qeval = #{qeval},
+            mandatory = #{mandatory}, key_sequence = #{keySequence},
+            controlled_terms = #{controlledTerms}, derivation = #{derivation},
+            predecessor = #{predecessor}, has_no_data = #{hasNoData},
+            text_content = #{textContent}, method = #{method},
+            pages = #{pages}, question_text = #{questionText}, prompt = #{prompt},
+            dataset_class = #{datasetClass}, structure = #{structure}, sort_order = #{sortOrder},
+            updated_time = #{updatedTime}, updated_by = #{updatedBy}
+        WHERE id = #{id}
+    </update>
+    
+    <!-- 根据ID删除项目Spec数据 -->
+    <delete id="deleteById" parameterType="java.lang.Long">
+        DELETE FROM sas_project_spec WHERE id = #{id}
+    </delete>
+    
+    <!-- 根据项目ID删除所有Spec数据 -->
+    <delete id="deleteByProjectId" parameterType="java.util.Map">
+        DELETE FROM sas_project_spec WHERE project_id = #{projectId} AND username = #{username}
+    </delete>
+    
+    <!-- 根据ID查询项目Spec数据 -->
+    <select id="selectById" parameterType="java.lang.Long" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sas_project_spec 
+        WHERE id = #{id}
+    </select>
+    
+    <!-- 根据项目ID查询Spec数据列表 -->
+    <select id="selectByProjectId" parameterType="java.util.Map" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sas_project_spec 
+        WHERE project_id = #{projectId} AND username = #{username}
+        ORDER BY domain ASC, sort_order ASC
+    </select>
+    
+    <!-- 根据项目ID和域查询Spec数据列表 -->
+    <select id="selectByProjectIdAndDomain" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sas_project_spec 
+        WHERE project_id = #{projectId} AND domain = #{domain} AND username = #{username}
+        ORDER BY sort_order, variable
+    </select>
+    
+    <!-- 分页查询项目Spec数据 -->
+    <select id="selectByPage" parameterType="java.util.Map" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sas_project_spec
+        <where>
+            <if test="username != null and username != ''">
+                AND username = #{username}
+            </if>
+            <if test="projectId != null and projectId != ''">
+                AND project_id = #{projectId}
+            </if>
+            <if test="domain != null and domain != ''">
+                AND domain = #{domain}
+            </if>
+            <if test="variable != null and variable != ''">
+                AND variable LIKE CONCAT('%', #{variable}, '%')
+            </if>
+            <if test="label != null and label != ''">
+                AND label LIKE CONCAT('%', #{label}, '%')
+            </if>
+            <if test="type != null and type != ''">
+                AND type = #{type}
+            </if>
+            <if test="origin != null and origin != ''">
+                AND origin = #{origin}
+            </if>
+            <if test="role != null and role != ''">
+                AND role = #{role}
+            </if>
+            <if test="core != null and core != ''">
+                AND core = #{core}
+            </if>
+        </where>
+        ORDER BY domain ASC, sort_order ASC
+        <if test="offset != null and limit != null">
+            LIMIT #{offset}, #{limit}
+        </if>
+    </select>
+    
+    <!-- 查询项目Spec数据总数 -->
+    <select id="countByParams" parameterType="java.util.Map" resultType="java.lang.Integer">
+        SELECT COUNT(*)
+        FROM sas_project_spec
+        <where>
+            <if test="username != null and username != ''">
+                AND username = #{username}
+            </if>
+            <if test="projectId != null and projectId != ''">
+                AND project_id = #{projectId}
+            </if>
+            <if test="domain != null and domain != ''">
+                AND domain = #{domain}
+            </if>
+            <if test="variable != null and variable != ''">
+                AND variable LIKE CONCAT('%', #{variable}, '%')
+            </if>
+            <if test="label != null and label != ''">
+                AND label LIKE CONCAT('%', #{label}, '%')
+            </if>
+            <if test="type != null and type != ''">
+                AND type = #{type}
+            </if>
+            <if test="origin != null and origin != ''">
+                AND origin = #{origin}
+            </if>
+            <if test="role != null and role != ''">
+                AND role = #{role}
+            </if>
+            <if test="core != null and core != ''">
+                AND core = #{core}
+            </if>
+        </where>
+    </select>
+    
+    <!-- 获取项目中所有不同的域列表 -->
+    <select id="selectDistinctDomainsByProjectId" parameterType="java.util.Map" resultType="java.lang.String">
+        SELECT DISTINCT domain 
+        FROM sas_project_spec 
+        WHERE project_id = #{projectId} AND username = #{username}
+        ORDER BY domain
+    </select>
+    
+    <!-- 获取项目域统计信息 -->
+    <select id="selectDomainStatsByProjectId" parameterType="java.util.Map" resultType="java.util.Map">
+        SELECT 
+            domain,
+            COUNT(*) as variable_count,
+            COUNT(CASE WHEN core = 'Req' THEN 1 END) as required_count,
+            COUNT(CASE WHEN core = 'Exp' THEN 1 END) as expected_count,
+            COUNT(CASE WHEN core = 'Perm' THEN 1 END) as permissible_count,
+            MIN(created_time) as first_created,
+            MAX(updated_time) as last_updated
+        FROM sas_project_spec 
+        WHERE project_id = #{projectId} AND username = #{username}
+        GROUP BY domain
+        ORDER BY domain
+    </select>
+    
+    <!-- 检查项目变量是否已存在 -->
+    <select id="checkVariableExists" resultType="java.lang.Integer">
+        SELECT COUNT(*)
+        FROM sas_project_spec 
+        WHERE project_id = #{projectId} AND domain = #{domain} AND variable = #{variable} AND username = #{username}
+    </select>
+    
+    <!-- 获取VCD对应的Domain映射 - 根据CDISC Submission Value查找 -->
+    <select id="getVariableDomainMapping" resultType="java.util.Map">
+        SELECT 
+            cdisc_submission_value as cdiscValue,
+            GROUP_CONCAT(DISTINCT domain ORDER BY domain) as domains
+        FROM sas_project_spec 
+        WHERE cdisc_submission_value IS NOT NULL 
+          AND cdisc_submission_value != ''
+          AND cdisc_submission_value != 'NULL'
+        <if test="projectId != null and projectId != ''">
+            AND project_id = #{projectId}
+        </if>
+        <if test="username != null and username != ''">
+            AND username = #{username}
+        </if>
+        GROUP BY cdisc_submission_value
+        ORDER BY cdisc_submission_value
+    </select>
+    
+    <!-- 获取VCD到域的映射 - 基于codelist表的VCD获取对应域 -->
+    <select id="getVcdDomainMapping" resultType="java.util.Map" parameterType="java.util.Map">
+        SELECT DISTINCT
+            cl.vcd as vcdName,
+            GROUP_CONCAT(DISTINCT ps.domain ORDER BY ps.domain) as domains
+        FROM sas_codelist_data cl
+        LEFT JOIN sas_project_spec ps ON ps.codelist = cl.vcd
+        <where>
+            <if test="projectId != null and projectId != ''">
+                AND (cl.project_id = #{projectId} OR cl.project_id IS NULL)
+                AND (ps.project_id = #{projectId} OR ps.project_id IS NULL)
+            </if>
+            <if test="username != null and username != ''">
+                AND (cl.username = #{username} OR cl.username IS NULL)
+                AND (ps.username = #{username} OR ps.username IS NULL)
+            </if>
+            AND cl.vcd IS NOT NULL 
+            AND cl.vcd != ''
+        </where>
+        GROUP BY cl.vcd
+        ORDER BY cl.vcd
+    </select>
+</mapper>
