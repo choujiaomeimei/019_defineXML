@@ -3,6 +3,7 @@ package com.stat.web.controller;
 import com.stat.common.dto.VlmDataDTO;
 import com.stat.common.result.CommonResult;
 import com.stat.common.result.PageCommonResult;
+import com.stat.common.security.RequireProjectAccess;
 import com.stat.common.security.UserContext;
 import com.stat.dal.mapper.PagesDataMapper;
 import com.stat.dal.mapper.ProjectSpecMapper;
@@ -18,6 +19,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import com.stat.service.IVlmDataService;
+import com.stat.service.ProjectFilePathResolver;
+import com.stat.service.CodelistExtractionResult;
+import com.stat.service.CodelistExtractionService;
 import jakarta.annotation.Resource;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -64,6 +68,12 @@ public class VlmDataController {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private ProjectFilePathResolver pathResolver;
+
+    @Autowired
+    private CodelistExtractionService codelistExtractionService;
+
     @Value("${app.python.path:C:/Project_Web/019_defineXML/Python}")
     private String pythonPath;
 
@@ -73,6 +83,7 @@ public class VlmDataController {
     /**
      * 分页查询VLM数据
      */
+    @RequireProjectAccess("projectId")
     @GetMapping("/list")
     public CommonResult<PageCommonResult<VlmDataDTO>> getVlmDataList(
             @RequestParam(value = "projectId", required = false) String projectId,
@@ -85,6 +96,7 @@ public class VlmDataController {
         try {
             Map<String, Object> params = new HashMap<>();
             params.put("projectId", projectId != null ? projectId : "");
+            params.put("username", UserContext.getUsername());
             params.put("dataset", dataset != null ? dataset : "");
             params.put("variable", variable != null ? variable : "");
             params.put("label", label != null ? label : "");
@@ -127,6 +139,7 @@ public class VlmDataController {
     /**
      * 根据项目ID查询所有VLM数据
      */
+    @RequireProjectAccess("projectId")
     @GetMapping("/project/{projectId}")
     public CommonResult<List<VlmDataDTO>> getVlmDataByProject(@PathVariable String projectId) {
         try {
@@ -456,8 +469,20 @@ public class VlmDataController {
     /**
      * Step 3: 提取 Codelist
      */
+    @RequireProjectAccess("projectId")
     @PostMapping("/extract-vlm-codelist/{projectId}")
-    public CommonResult<String> extractVlmCodelist(@PathVariable String projectId) {
+    public CommonResult<CodelistExtractionResult> extractVlmCodelist(@PathVariable String projectId) {
+        try {
+            CodelistExtractionResult result = codelistExtractionService.extract(
+                    projectId, UserContext.getUsername(), CodelistExtractionService.Scope.VLM);
+            return CommonResult.success(result);
+        } catch (Exception e) {
+            logger.error("统一提取 VLM Codelist 失败", e);
+            return CommonResult.failed("提取Codelist失败: " + e.getMessage());
+        }
+    }
+
+    private CommonResult<String> extractVlmCodelistLegacy(String projectId) {
         try {
             String pythonExecutable = findPythonExecutable();
             if (pythonExecutable == null) return CommonResult.failed("未找到可用的Python");
@@ -526,7 +551,7 @@ public class VlmDataController {
             logger.info("[vlm-codelist] CT loaded: {} headers, {} terms", ctHeaderMap.size(), ctTermLookup.size());
         }
 
-        String xptDir = uploadBasePath + "/" + projectId + "/xpt";
+        String xptDir = pathResolver.xptDirectory(projectId, standardType).toString();
         int totalTerms = 0;
         // VLM always starts from sort_order = 500000 (Variables uses 1..N)
         int globalOrder = 500000;
@@ -786,8 +811,9 @@ public class VlmDataController {
             env.put("PYTHONIOENCODING", "utf-8");
         env.put("PYTHON_BASE_PATH", pythonPath);
         env.put("UPLOAD_BASE_PATH", uploadBasePath);
-        env.put("DATA_PATH", uploadBasePath + "/" + projectId + "/xpt");
-        env.put("OUTPUT_PATH", uploadBasePath + "/" + projectId + "/output");
+        String standardType = pathResolver.resolveStandardType(projectId, null);
+        env.put("DATA_PATH", pathResolver.xptDirectory(projectId, standardType).toString());
+        env.put("OUTPUT_PATH", pathResolver.extractionOutputDirectory(projectId, standardType).toString());
         if (username != null && !username.isEmpty()) {
             env.put("USERNAME_CONTEXT", username);
         }
@@ -989,7 +1015,6 @@ public class VlmDataController {
                 String ds = vlm.getDataset() != null ? vlm.getDataset().toUpperCase().trim() : "";
                 if (ds.startsWith("SUPP")) { skippedSupp++; continue; }
 
-                vlm.setPages(null);
                 String var = vlm.getVariable() != null ? vlm.getVariable().toUpperCase().trim() : "";
                 String wc = vlm.getWhereClause() != null ? vlm.getWhereClause().trim() : "";
                 String varSource = specSourceMap.getOrDefault(ds + "|" + var, "");
@@ -998,10 +1023,10 @@ public class VlmDataController {
                     String pages = vlmPagesMap.get(ds + "|" + var + "|" + wc);
                     if (pages != null) {
                         vlm.setPages(pages);
+                        vlmDataMapper.updateById(vlm);
                         matchCount++;
                     }
                 }
-                vlmDataMapper.updateById(vlm);
             }
 
             String suppMsg = skippedSupp > 0 ? String.format("，跳过 SUPPxx %d 条", skippedSupp) : "";

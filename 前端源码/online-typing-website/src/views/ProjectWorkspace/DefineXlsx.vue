@@ -1,27 +1,22 @@
 <template>
   <div class="define-page">
-    <div class="define-container">
-      <div class="section-header">
-        <div class="section-title-group">
-          <h3>Define 制作</h3>
-          <span class="section-desc">合并所有数据表并生成 Define.xlsx</span>
-        </div>
-        <div class="header-actions">
-          <el-button v-if="generatedFile" type="warning" @click="openOnlineEditor" round>
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" class="btn-icon">
-              <path d="M11.5 1.5L14.5 4.5M1 15L1.5 12.5L12 2L14 4L3.5 14.5L1 15Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            在线编辑
-          </el-button>
-          <el-button type="primary" :loading="generating" @click="generateDefine" round>
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" class="btn-icon">
-              <path d="M8 2V10M8 10L5 7M8 10L11 7M2 12V13C2 13.6 2.4 14 3 14H13C13.6 14 14 13.6 14 13V12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            生成并下载 Define.xlsx
-          </el-button>
-        </div>
+    <div class="table-actions table-actions--end">
+      <div class="ws-btn-group">
+        <el-button v-if="generatedFile" size="small" @click="openOnlineEditor">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" class="btn-icon">
+            <path d="M11.5 1.5L14.5 4.5M1 15L1.5 12.5L12 2L14 4L3.5 14.5L1 15Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          在线编辑
+        </el-button>
+        <el-button size="small" type="primary" :loading="generating" @click="generateDefine">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" class="btn-icon">
+            <path d="M8 2V10M8 10L5 7M8 10L11 7M2 12V13C2 13.6 2.4 14 3 14H13C13.6 14 14 13.6 14 13V12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          生成并下载 Define.xlsx
+        </el-button>
       </div>
-
+    </div>
+    <div class="define-container">
       <div class="define-layout">
         <div class="op-card">
           <div class="op-card-title">
@@ -37,7 +32,6 @@
                 <div class="sheet-icon">{{ s.icon }}</div>
                 <div class="sheet-info">
                   <span class="sheet-name">{{ s.name }}</span>
-                  <span class="sheet-desc">{{ s.desc }}</span>
                 </div>
               </div>
             </div>
@@ -83,15 +77,15 @@ const currentProjectId = computed(() => props.projectId || route.params.projectI
 const baseUrl = ''
 
 const sheetList = [
-  { name: 'Study', desc: '研究级别元数据', icon: 'S' },
-  { name: 'Datasets', desc: '数据集定义', icon: 'DS' },
-  { name: 'Variables', desc: '变量定义', icon: 'Var' },
-  { name: 'ValueLevel', desc: '变量级元数据', icon: 'VL' },
-  { name: 'Codelists', desc: '代码列表', icon: 'CL' },
-  { name: 'Dictionaries', desc: '外部字典引用', icon: 'Di' },
-  { name: 'Methods', desc: '方法定义', icon: 'Mt' },
-  { name: 'Comments', desc: '注释定义', icon: 'Cm' },
-  { name: 'Documents', desc: '文档引用', icon: 'Do' },
+  { name: 'Study', icon: 'S' },
+  { name: 'Datasets', icon: 'DS' },
+  { name: 'Variables', icon: 'Var' },
+  { name: 'ValueLevel', icon: 'VL' },
+  { name: 'Codelists', icon: 'CL' },
+  { name: 'Dictionaries', icon: 'Di' },
+  { name: 'Methods', icon: 'Mt' },
+  { name: 'Comments', icon: 'Cm' },
+  { name: 'Documents', icon: 'Do' },
 ]
 
 const generateDefine = async () => {
@@ -156,16 +150,20 @@ onMounted(() => {
 </script>
 
 <style scoped lang="less">
-.define-page { padding: var(--saas-content-padding); }
-.define-container { max-width: var(--saas-content-max-width); margin: 0 auto; }
+.define-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--saas-topbar-height, 64px));
+  background: var(--saas-bg-page);
+}
 
-.section-header {
-  display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: var(--saas-space-5);
-  .section-title-group {
-    h3 { font-size: var(--saas-text-xl); font-weight: var(--saas-font-bold); color: var(--saas-text-primary); margin: 0 0 var(--saas-space-1) 0; }
-    .section-desc { font-size: var(--saas-text-sm); color: var(--saas-text-secondary); }
-  }
-  .header-actions { display: flex; gap: var(--saas-space-2); flex-shrink: 0; }
+.define-container {
+  flex: 1;
+  overflow: auto;
+  padding: var(--saas-content-padding);
+  max-width: var(--saas-content-max-width);
+  margin: 0 auto;
+  width: 100%;
 }
 
 .define-layout { display: flex; flex-direction: column; gap: 20px; }
@@ -197,15 +195,14 @@ onMounted(() => {
     }
     .sheet-info { display: flex; flex-direction: column; gap: 2px; }
     .sheet-name { font-size: 14px; font-weight: 600; color: var(--saas-text-primary); }
-    .sheet-desc { font-size: 12px; color: var(--saas-text-tertiary); }
   }
 }
 
 .result-card {
   background: var(--saas-bg-card); border: 1px solid var(--saas-border-light);
   border-radius: var(--saas-radius-lg); padding: 20px; margin-bottom: 16px;
-  &.success { border-left: 3px solid var(--saas-success); }
-  &.error { border-left: 3px solid var(--saas-danger); }
+  &.success { background: var(--saas-success-bg); border-color: var(--saas-success-light); }
+  &.error { background: var(--saas-danger-bg); border-color: var(--saas-danger-light); }
   .result-header {
     display: flex; align-items: center; gap: 8px;
     font-weight: 600; font-size: 15px; color: var(--saas-text-primary);

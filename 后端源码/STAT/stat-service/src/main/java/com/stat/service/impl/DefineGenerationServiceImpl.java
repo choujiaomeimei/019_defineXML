@@ -14,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import com.stat.service.util.ExcelStyleHelper;
+import com.stat.service.ProjectFilePathResolver;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -38,9 +39,6 @@ public class DefineGenerationServiceImpl {
     @Value("${app.python.path:C:/Project_Web/019_defineXML/Python}")
     private String pythonPath;
 
-    @Value("${app.projects.base-path:C:/Project_Web/019_defineXML/projects}")
-    private String projectsBasePath;
-
     @Autowired
     private ProjectSpecMapper projectSpecMapper;
 
@@ -55,6 +53,9 @@ public class DefineGenerationServiceImpl {
 
     @Autowired
     private ProjectSnapshotServiceImpl snapshotService;
+
+    @Autowired
+    private ProjectFilePathResolver pathResolver;
 
     public Map<String, Object> generateDefine(String projectId, Map<String, String> config) throws Exception {
         log.info("开始DB驱动的Define生成: projectId={}", projectId);
@@ -92,7 +93,9 @@ public class DefineGenerationServiceImpl {
         Files.writeString(specJson, JSON.toJSONString(specList2));
 
         // 3. Determine output directory
-        Path outputDir = Paths.get(projectsBasePath, projectId, "define", "output");
+        String standardType = pathResolver.resolveStandardType(projectId,
+                config != null ? config.get("standardType") : null);
+        Path outputDir = pathResolver.definePackageDirectory(projectId, standardType);
         Files.createDirectories(outputDir);
 
         // 4. Build Python command with explicit paths

@@ -27,8 +27,8 @@ spring:
   servlet:
     multipart:
       enabled: true
-      max-file-size: 50MB
-      max-request-size: 50MB
+      max-file-size: 100MB
+      max-request-size: 500MB
   flyway:
     enabled: false
 
@@ -39,6 +39,8 @@ mybatis:
     map-underscore-to-camel-case: true
 
 app:
+  legacy-file-upload:
+    enabled: false
   upload:
     path: C:/Project_Web/019_defineXML/uploads
   python:

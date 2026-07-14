@@ -37,6 +37,7 @@ public class UnifiedFileController {
         ALLOWED_EXTENSIONS.put("ACRF", new HashSet<>(Arrays.asList("pdf")));
         ALLOWED_EXTENSIONS.put("P21_SPEC", new HashSet<>(Arrays.asList("xlsx", "xls")));
         ALLOWED_EXTENSIONS.put("PROJECT_SPEC", new HashSet<>(Arrays.asList("xlsx", "xls")));
+        ALLOWED_EXTENSIONS.put("EDC_CODELIST", new HashSet<>(Arrays.asList("xlsx", "xls")));
         ALLOWED_EXTENSIONS.put("XPT", new HashSet<>(Arrays.asList("xpt")));
     }
 
@@ -45,6 +46,7 @@ public class UnifiedFileController {
             @RequestParam("file") MultipartFile file,
             @RequestParam("projectId") String projectId,
             @RequestParam("fileCategory") String fileCategory,
+            @RequestParam(value = "standardType", required = false) String standardType,
             @RequestParam(value = "username", required = false) String username) {
         try {
             if (file.isEmpty()) {
@@ -65,7 +67,7 @@ public class UnifiedFileController {
             }
 
             FileUploadRecord record = unifiedFileUploadService.uploadFile(
-                    projectId, normalizedCategory, username, file);
+                    projectId, normalizedCategory, standardType, username, file);
 
             Map<String, Object> data = new HashMap<>();
             data.put("fileId", record.getFileId());
@@ -75,6 +77,9 @@ public class UnifiedFileController {
             data.put("uploadTime", record.getUploadTime());
             data.put("fileCategory", record.getFileCategory());
             data.put("processStatus", record.getProcessStatus());
+            data.put("standardType", record.getStandardType());
+            data.put("workspaceFilePath", record.getWorkspaceFilePath());
+            data.put("workspaceReady", record.getWorkspaceFilePath() != null);
 
             return CommonResult.success(data);
         } catch (Exception e) {

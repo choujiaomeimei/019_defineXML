@@ -1,685 +1,1058 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Codelist Extractor - Comprehensive codelist extraction from DB + XPT files.
+"""Extract Variables/VLM codelists from cached XPT data and write atomically."""
 
-Sources:
-  1. Variables level: sas_project_spec.cdisc_submission_value → read XPT column to get Terms.
-  2. VLM level: sas_vlm_data rows → filter XPT by Where Clause, read --STRESC unique values.
+from __future__ import annotations
 
-Handles deduplication and removes empty values.
-"""
-
+import json
+import hashlib
+import math
 import os
 import re
 import sys
+import traceback
+import unicodedata
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+
+import pandas as pd
 import pymysql
 import pyreadstat
-import pandas as pd
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
-sys.path.append(str(Path(__file__).parent))
+
+SOURCE_PREFIX = "codelist_extractor"
+VAR_SOURCE = "extract_var_codelist"
+VLM_SOURCE = "extract_vlm_codelist"
+LEGACY_VAR_SOURCES: Tuple[str, ...] = (SOURCE_PREFIX + ":variables",)
+LEGACY_VLM_SOURCES: Tuple[str, ...] = (SOURCE_PREFIX + ":vlm", "vlm_extractor")
+VALID_SCOPES = {"VARIABLES", "VLM", "ALL"}
+SYSTEM_REFERENCE_SOURCES = {
+    VAR_SOURCE, VLM_SOURCE, SOURCE_PREFIX,
+    SOURCE_PREFIX + ":variables", SOURCE_PREFIX + ":vlm", "vlm_extractor",
+}
+ENCODINGS: Tuple[Optional[str], ...] = (None, "latin1", "cp1252", "gb18030")
+_PUNCT_TRANSLATION = str.maketrans({
+    "，": ",", "。": ".", "；": ";", "：": ":", "（": "(", "）": ")",
+    "【": "[", "】": "]", "！": "!", "？": "?", "“": '"', "”": '"',
+    "‘": "'", "’": "'", "、": ",",
+})
 
 
 def _get_db_config() -> Dict[str, str]:
     return {
-        'host': os.environ.get('DB_HOST', 'localhost'),
-        'user': os.environ.get('DB_USER', 'root'),
-        'password': os.environ.get('DB_PASSWORD', '123123'),
-        'database': os.environ.get('DB_NAME', 'define_db'),
+        "host": os.environ.get("DB_HOST", "localhost"),
+        "port": int(os.environ.get("DB_PORT", "3306")),
+        "user": os.environ.get("DB_USER", "root"),
+        "password": os.environ.get("DB_PASSWORD", "123123"),
+        "database": os.environ.get("DB_NAME", "define_db"),
     }
 
 
-def find_xpt_file(data_path: Path, dataset: str) -> Optional[Path]:
-    direct = data_path / f"{dataset}.xpt"
-    if direct.exists():
-        return direct
-    for variant in [dataset.upper(), dataset.lower()]:
-        p = data_path / f"{variant}.xpt"
-        if p.exists():
-            return p
-    matches = list(data_path.glob(f"*_{dataset}.xpt")) + list(data_path.glob(f"*_{dataset.lower()}.xpt"))
-    if matches:
-        return matches[0]
-    for p in data_path.glob("*.xpt"):
-        stem = p.stem.lower()
-        if stem == dataset.lower() or stem.endswith(f"_{dataset.lower()}"):
-            return p
-    return None
-
-
-def read_xpt(xpt_path: Path) -> pd.DataFrame:
-    df, _ = pyreadstat.read_xport(str(xpt_path))
-    df.columns = df.columns.str.upper()
-    for col in df.columns:
-        if df[col].dtype == object:
-            df[col] = df[col].apply(_clean_text)
-    return df
-
-
-def _clean_text(val):
-    if pd.isna(val) or val is None:
-        return ''
-    s = str(val)
-    if s == 'nan':
-        return ''
-    if s.startswith("b'") and s.endswith("'"):
-        s = s[2:-1]
+def normalize_text(value) -> str:
+    """Return a stable display/dedup value for SAS/EDC scalar data."""
+    if value is None:
+        return ""
     try:
-        s = s.encode('latin1').decode('utf-8')
-    except Exception:
+        if pd.isna(value):
+            return ""
+    except (TypeError, ValueError):
         pass
-    return s.strip()
+    if isinstance(value, bytes):
+        for encoding in ("utf-8", "gb18030", "cp1252", "latin1"):
+            try:
+                value = value.decode(encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+    if isinstance(value, float) and math.isfinite(value) and value.is_integer():
+        return str(int(value))
+    text = str(value)
+    if text.lower() == "nan":
+        return ""
+    if text.startswith("b'") and text.endswith("'"):
+        text = text[2:-1]
+    text = unicodedata.normalize("NFKC", text).translate(_PUNCT_TRANSLATION)
+    text = re.sub(r"\s+", " ", text).strip()
+    if re.fullmatch(r"[+-]?\d+\.0+", text):
+        return text.split(".", 1)[0]
+    return text
 
 
-def parse_where_clause(wc: str) -> Optional[Tuple[str, str]]:
-    if not wc or not wc.strip():
-        return None
-    m = re.match(r'(\w+)\s+EQ\s+"([^"]*)"', wc.strip())
-    if m:
-        return m.group(1).upper(), m.group(2)
+def dedupe_values(values: Iterable) -> List[str]:
+    """Normalize and deduplicate while retaining the first display value."""
+    result: List[str] = []
+    seen = set()
+    for value in values:
+        text = normalize_text(value)
+        if not text:
+            continue
+        key = text.casefold()
+        if key not in seen:
+            seen.add(key)
+            result.append(text)
+    return result
+
+
+def normalize_frame(df: pd.DataFrame) -> pd.DataFrame:
+    result = df.copy()
+    result.columns = [normalize_text(c).upper() for c in result.columns]
+    for col in result.columns:
+        if result[col].dtype == object:
+            result[col] = result[col].map(normalize_text)
+    return result
+
+
+def read_xpt(xpt_path: Path) -> Tuple[pd.DataFrame, str]:
+    """Read an XPORT file with deterministic legacy-encoding fallbacks."""
+    errors = []
+    for encoding in ENCODINGS:
+        try:
+            kwargs = {"encoding": encoding} if encoding else {}
+            df, _ = pyreadstat.read_xport(str(xpt_path), **kwargs)
+            return normalize_frame(df), encoding or "auto"
+        except Exception as exc:  # pyreadstat uses several exception types by version
+            errors.append(f"{encoding or 'auto'}: {exc}")
+    raise RuntimeError("all XPORT encodings failed: " + " | ".join(errors))
+
+
+def find_xpt_file(data_path: Path, dataset: str) -> Optional[Path]:
+    target = normalize_text(dataset).lower()
+    for path in data_path.glob("*.xpt"):
+        stem = path.stem.lower()
+        if stem == target or stem.endswith("_" + target):
+            return path
     return None
 
 
-def _is_numeric(s: str) -> bool:
+def parse_where_clause(where_clause: str) -> Optional[Tuple[str, str]]:
+    match = re.fullmatch(
+        r"\s*([A-Za-z_]\w*)\s+(?:EQ|=)\s*(?:\"([^\"]*)\"|'([^']*)'|([^\s]+))\s*",
+        where_clause or "",
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+    return match.group(1).upper(), normalize_text(next(v for v in match.groups()[1:] if v is not None))
+
+
+def _is_numeric(value: str) -> bool:
     try:
-        float(s)
+        float(value)
         return True
-    except (ValueError, TypeError):
+    except (TypeError, ValueError):
         return False
 
 
-def _infer_data_type(values: List[str]) -> str:
-    if not values:
-        return 'text'
-    all_numeric = all(_is_numeric(v) for v in values if v)
-    if all_numeric:
-        has_decimal = any('.' in v for v in values if v)
-        return 'float' if has_decimal else 'integer'
-    return 'text'
+def infer_data_type(values: Sequence[str]) -> str:
+    nonempty = [normalize_text(v) for v in values if normalize_text(v)]
+    if not nonempty or not all(_is_numeric(v) for v in nonempty):
+        return "Char"
+    return "Float" if any("." in value for value in nonempty) else "Integer"
 
 
 def _term_weight(term: str) -> int:
-    """Sort weight for a codelist term (lower = earlier)."""
-    if not term:
-        return 50
-    t = term.strip()
-    tu = t.upper()
-
-    # Unknown / Other → always last
-    if t in ('未知',) or tu in ('UNKNOWN', 'OTHER') or tu.startswith('UNKNOWN') or tu.startswith('OTHER') or t == '其他':
+    text = normalize_text(term)
+    upper = text.upper()
+    if text in ("未知", "其他") or upper.startswith(("UNKNOWN", "OTHER")):
         return 90
-
-    # Not done / not examined → after all regular terms
-    if t in ('未查', '未做') or tu in ('NOT DONE', 'NOT EXAMINED') or tu.startswith('NOT DONE') or tu.startswith('NOT EXAMINED'):
+    if text in ("未查", "未做") or upper.startswith(("NOT DONE", "NOT EXAMINED")):
         return 80
-
-    # Clinical normalcy
-    if t == '正常' or tu in ('NORMAL', 'WNL', 'WITHIN NORMAL LIMITS'):
+    if text == "正常" or upper in ("NORMAL", "WNL", "WITHIN NORMAL LIMITS"):
         return 10
-    if '无临床意义' in t or 'NCS' in tu or ('NOT CLINICALLY' in tu and 'SIGNIFICANT' in tu):
-        return 20
-    if t == '异常' or tu == 'ABNORMAL':
-        return 25
-    if '有临床意义' in t or ('CLINICALLY SIGNIFICANT' in tu and 'NOT' not in tu):
-        return 30
-
-    # Negative before positive
-    if t == '阴性' or tu in ('NEGATIVE', 'NEG'):
+    if text == "阴性" or upper in ("NEGATIVE", "NEG"):
         return 11
-    if t == '阳性' or tu in ('POSITIVE', 'POS'):
+    if text == "阳性" or upper in ("POSITIVE", "POS"):
         return 12
-
+    if "无临床意义" in text or "NCS" in upper or (
+        "NOT CLINICALLY" in upper and "SIGNIFICANT" in upper
+    ):
+        return 20
+    if text == "异常" or upper == "ABNORMAL":
+        return 25
+    if "有临床意义" in text or (
+        "CLINICALLY SIGNIFICANT" in upper and "NOT" not in upper
+    ):
+        return 30
     return 50
 
 
-def _sort_terms(terms: list) -> list:
-    """Sort a list of {'code': ..., 'codeDes': ...} dicts."""
-    if len(terms) <= 1:
-        return terms
-    return sorted(terms, key=lambda t: (_term_weight(t.get('code', '')), t.get('code', '').upper()))
-
-
-def run(project_id: str, data_path: str, username: str = ''):
-    db_config = _get_db_config()
-    data_dir = Path(data_path)
-    if not data_dir.exists():
-        print(f"[ERROR] XPT path not found: {data_dir}")
-        return False
-
-    conn = pymysql.connect(
-        host=db_config['host'], user=db_config['user'],
-        password=db_config['password'], database=db_config['database'],
-        charset='utf8mb4', autocommit=False,
+def sort_terms(terms: List[dict]) -> List[dict]:
+    return sorted(
+        terms,
+        key=lambda term: (_term_weight(term.get("code", "")), normalize_text(term.get("code")).casefold()),
     )
 
-    try:
-        # ── Load CT codelist_name lookup ─────────────────────────────────
-        # Maps cdisc_submission_value → codelist_name from CT header rows
-        ct_name_lookup: Dict[str, str] = {}
-        with conn.cursor(pymysql.cursors.DictCursor) as cur:
-            cur.execute(
-                "SELECT ct_version FROM project_config WHERE project_id = %s LIMIT 1",
-                (project_id,))
-            cfg_row = cur.fetchone()
-            ct_version_str = (cfg_row or {}).get('ct_version', '') or ''
 
-            # Extract date part from ct_version (e.g. "2023-06-30")
-            import re as _re
-            date_match = _re.search(r'(\d{4}-\d{2}-\d{2})', ct_version_str)
-            ct_date = date_match.group(1) if date_match else ''
+def extract_unique_terms(frame: pd.DataFrame, column: str) -> List[dict]:
+    if column.upper() not in frame.columns:
+        return []
+    values = dedupe_values(frame[column.upper()].tolist())
+    return [{"code": value, "codeDes": ""} for value in sorted(values, key=str.casefold)]
 
-            pkg_id = None
-            if ct_date:
-                cur.execute(
-                    "SELECT id FROM ct_package WHERE release_date = %s LIMIT 1",
-                    (ct_date,))
-                pkg_row = cur.fetchone()
-                if pkg_row:
-                    pkg_id = pkg_row['id']
 
-            if pkg_id is None:
-                cur.execute(
-                    "SELECT id FROM ct_package WHERE standard_type = 'SDTM' AND language_code = 'EN' "
-                    "ORDER BY release_date DESC LIMIT 1")
-                pkg_row = cur.fetchone()
-                if pkg_row:
-                    pkg_id = pkg_row['id']
+def extract_paired_terms(frame: pd.DataFrame, code_column: str, text_column: str) -> Tuple[List[dict], List[dict]]:
+    code_column, text_column = code_column.upper(), text_column.upper()
+    if code_column not in frame.columns:
+        return [], []
+    code_terms: List[dict] = []
+    text_terms: List[dict] = []
+    seen_codes, seen_texts = set(), set()
+    has_text = text_column in frame.columns
+    columns = [code_column, text_column] if has_text else [code_column]
+    for values in frame[columns].itertuples(index=False, name=None):
+        code = normalize_text(values[0])
+        description = normalize_text(values[1]) if has_text else ""
+        code_key = code.casefold()
+        if code and code_key not in seen_codes:
+            seen_codes.add(code_key)
+            code_terms.append({"code": code, "codeDes": description})
+        text_key = description.casefold()
+        if description and text_key not in seen_texts:
+            seen_texts.add(text_key)
+            text_terms.append({"code": description, "codeDes": ""})
+    return sort_terms(code_terms), sort_terms(text_terms)
 
-            if pkg_id:
-                cur.execute(
-                    "SELECT codelist_name, cdisc_submission_value FROM ct_term "
-                    "WHERE package_id = %s AND (codelist_code IS NULL OR codelist_code = '')",
-                    (pkg_id,))
-                for row in cur.fetchall():
-                    sv = (row.get('cdisc_submission_value') or '').strip()
-                    cn = (row.get('codelist_name') or '').strip()
-                    if sv and cn:
-                        ct_name_lookup[sv.upper()] = cn
-                print(f"  CT lookup loaded: {len(ct_name_lookup)} codelist names from package {pkg_id}")
+
+class EDCStore:
+    """Load one optional EDC workbook/CSV and expose domain-specific frames."""
+
+    def __init__(self, path: str):
+        self.path = Path(path) if path else None
+        self.frames: Dict[str, pd.DataFrame] = {}
+        self.error = ""
+        if self.path:
+            self._load()
+
+    def _load(self) -> None:
+        if not self.path or not self.path.exists():
+            self.error = f"EDC file not found: {self.path}"
+            return
+        try:
+            if self.path.suffix.lower() in (".xlsx", ".xls", ".xlsm"):
+                raw = pd.read_excel(self.path, sheet_name=None)
+                self.frames = {normalize_text(name).upper(): normalize_frame(df) for name, df in raw.items()}
+            elif self.path.suffix.lower() in (".csv", ".txt"):
+                self.frames = {"__DEFAULT__": normalize_frame(pd.read_csv(self.path))}
             else:
-                print("  [WARN] No CT package found, will use spec labels for Name")
+                self.error = f"unsupported EDC file type: {self.path.suffix}"
+        except Exception as exc:
+            self.error = f"failed to read EDC file: {exc}"
 
-        # ── Load XPT files ───────────────────────────────────────────────
-        xpt_cache: Dict[str, pd.DataFrame] = {}
+    def get(self, dataset: str) -> Optional[pd.DataFrame]:
+        dataset = dataset.upper()
+        if dataset in self.frames:
+            return self.frames[dataset]
+        for frame in self.frames.values():
+            for domain_col in ("DOMAIN", "DATASET"):
+                if domain_col in frame.columns:
+                    mask = frame[domain_col].map(normalize_text).str.upper() == dataset
+                    if mask.any():
+                        return frame.loc[mask].reset_index(drop=True)
+        if len(self.frames) == 1:
+            return next(iter(self.frames.values()))
+        return None
 
-        def get_xpt(ds: str) -> Optional[pd.DataFrame]:
-            ds_upper = ds.upper()
-            if ds_upper in xpt_cache:
-                return xpt_cache[ds_upper]
-            xpt_file = find_xpt_file(data_dir, ds)
-            if not xpt_file:
-                return None
-            try:
-                df = read_xpt(xpt_file)
-                xpt_cache[ds_upper] = df
-                print(f"  [OK] {ds_upper}.xpt loaded ({len(df)} rows)")
-                return df
-            except Exception as e:
-                print(f"  [ERR] {ds_upper}.xpt: {e}")
-                return None
 
-        # ── Collect codelist definitions ─────────────────────────────────
-        # Each codelist entry: {vcd, vlabel, type, terms: [{code, codeDes}]}
-        codelist_map: Dict[str, dict] = {}
+class DatasetCache:
+    """Resolve each dataset once from XPT, with EDC used for missing columns."""
 
-        def add_codelist(vcd: str, vlabel: str, terms: List[dict],
-                         data_type: str = 'Char', subm_val: str = ''):
-            """Add or merge terms into a codelist, deduplicating by code value."""
-            vcd = vcd.strip()
-            if not vcd:
-                return
-            # Use submission value (if provided) to look up CT English name
-            lookup_key = subm_val.upper() if subm_val else vcd.upper()
-            ct_name = ct_name_lookup.get(lookup_key, '')
-            effective_label = ct_name if ct_name else (vlabel.strip() if vlabel else '')
-            if vcd not in codelist_map:
-                codelist_map[vcd] = {
-                    'vcd': vcd,
-                    'vlabel': effective_label,
-                    'type': data_type,
-                    'terms': [],
-                    'seen_codes': set(),
-                    'subm_val': subm_val or vcd,
-                }
-            entry = codelist_map[vcd]
-            if ct_name:
-                entry['vlabel'] = ct_name
-            elif not entry['vlabel'] and vlabel:
-                entry['vlabel'] = vlabel.strip()
-            for t in terms:
-                code = str(t.get('code', '')).strip()
-                if not code:
-                    continue
-                if code in entry['seen_codes']:
-                    continue
-                entry['seen_codes'].add(code)
-                entry['terms'].append({
-                    'code': code,
-                    'codeDes': str(t.get('codeDes', '')).strip(),
+    def __init__(self, data_path: Path, edc_path: str = ""):
+        self.data_path = data_path
+        self.edc = EDCStore(edc_path)
+        self.cache: Dict[str, Optional[pd.DataFrame]] = {}
+        self.encodings: Dict[str, str] = {}
+        self.errors: List[str] = []
+        self.fallbacks: List[dict] = []
+
+    def _xpt(self, dataset: str) -> Optional[pd.DataFrame]:
+        dataset = dataset.upper()
+        if dataset in self.cache:
+            return self.cache[dataset]
+        path = find_xpt_file(self.data_path, dataset)
+        if not path:
+            self.cache[dataset] = None
+            return None
+        try:
+            frame, encoding = read_xpt(path)
+            self.cache[dataset] = frame
+            self.encodings[dataset] = encoding
+        except Exception as exc:
+            self.cache[dataset] = None
+            self.errors.append(f"{dataset}: {exc}")
+        return self.cache[dataset]
+
+    def get(self, dataset: str, required: Sequence[str] = ()) -> Optional[pd.DataFrame]:
+        dataset = dataset.upper()
+        required_set = {column.upper() for column in required if column}
+        xpt = self._xpt(dataset)
+        if xpt is not None and required_set.issubset(xpt.columns):
+            return xpt
+        edc = self.edc.get(dataset)
+        if edc is not None and required_set.issubset(edc.columns):
+            reason = "missing XPT" if xpt is None else "missing columns: " + ",".join(sorted(required_set - set(xpt.columns)))
+            event = {"dataset": dataset, "reason": reason, "source": str(self.edc.path)}
+            if event not in self.fallbacks:
+                self.fallbacks.append(event)
+            return edc
+        if required_set and (xpt is None or not required_set.issubset(xpt.columns)):
+            reason = (
+                "missing XPT"
+                if xpt is None
+                else "missing columns: " + ",".join(sorted(required_set - set(xpt.columns)))
+            )
+            message = f"{dataset}: {reason}"
+            if message not in self.errors:
+                self.errors.append(message)
+        return xpt
+
+
+@dataclass
+class Draft:
+    codelists: Dict[Tuple[str, str], dict] = field(default_factory=dict)
+    spec_references: Dict[int, Optional[str]] = field(default_factory=dict)
+    vlm_references: Dict[int, Optional[str]] = field(default_factory=dict)
+    dictionaries: set = field(default_factory=set)
+    metadata_counts: Dict[str, int] = field(default_factory=lambda: {"VARIABLES": 0, "VLM": 0})
+
+    def add(
+        self,
+        source: str,
+        vcd: str,
+        label: str,
+        terms: List[dict],
+        data_type: str = "Char",
+        submission_value: str = "",
+        ct_names: Optional[Dict[str, str]] = None,
+        ct_headers: Optional[Dict[str, str]] = None,
+        ct_terms: Optional[Dict[Tuple[str, str], str]] = None,
+        terminology: str = "",
+    ) -> None:
+        vcd = normalize_text(vcd)
+        if not vcd or not terms:
+            return
+        lookup_key = normalize_text(submission_value or vcd).upper()
+        effective_label = (ct_names or {}).get(lookup_key, "") or normalize_text(label)
+        nci_codelist_code = (ct_headers or {}).get(lookup_key, "")
+        key = (source, vcd)
+        entry = self.codelists.setdefault(key, {
+            "source": source, "vcd": vcd, "vlabel": effective_label,
+            "type": data_type, "terms": [], "_seen": set(),
+            "nciCodelistCode": nci_codelist_code,
+            "terminology": terminology if nci_codelist_code else "",
+        })
+        if effective_label and not entry["vlabel"]:
+            entry["vlabel"] = effective_label
+        for term in terms:
+            code = normalize_text(term.get("code"))
+            code_des = normalize_text(term.get("codeDes"))
+            dedupe_key = code.casefold()
+            if code and dedupe_key not in entry["_seen"]:
+                entry["_seen"].add(dedupe_key)
+                nci_term_code = ""
+                if nci_codelist_code:
+                    nci_term_code = (ct_terms or {}).get(
+                        (nci_codelist_code.upper(), code.upper()), ""
+                    )
+                entry["terms"].append({
+                    "code": code,
+                    "codeDes": code_des,
+                    "nciTermCode": nci_term_code,
                 })
 
-        # ── Part 1: Variables-level codelists ────────────────────────────
-        print("\n=== Part 1: Variables-level codelists ===")
-        with conn.cursor(pymysql.cursors.DictCursor) as cur:
-            sql = ("SELECT domain, variable, cdisc_submission_value, codelist, label "
-                   "FROM sas_project_spec WHERE project_id = %s")
-            params = [project_id]
-            if username:
-                sql += " AND username = %s"
-                params.append(username)
-            sql += " ORDER BY domain, variable"
-            cur.execute(sql, params)
-            spec_rows = cur.fetchall()
 
-        general_vars: List[dict] = []
-        domain_all_values: list = []   # collect all DOMAIN values across datasets
-        domain_label: str = ''
-        testcd_test_pairs: Dict[str, dict] = {}
-        dict_ids_seen: set = set()  # track MEDDRA / WHODRUG already collected
+def _query_rows(conn, sql: str, params: Sequence) -> List[dict]:
+    with conn.cursor(pymysql.cursors.DictCursor) as cursor:
+        cursor.execute(sql, params)
+        return list(cursor.fetchall())
 
-        for row in spec_rows:
-            subm_val = (row.get('cdisc_submission_value') or '').strip()
-            if not subm_val:
-                continue
-            domain = (row.get('domain') or '').strip().upper()
-            variable = (row.get('variable') or '').strip().upper()
-            label = (row.get('label') or '').strip()
 
-            # MEDDRA / WHODRUG → dictionaries, skip codelist extraction
-            if subm_val.upper() in ('MEDDRA', 'WHODRUG'):
-                dict_ids_seen.add(subm_val.upper())
-                continue
+def _load_ct_lookup(conn, project_id: str) -> Tuple[
+    Dict[str, str], Dict[str, str], Dict[Tuple[str, str], str], Optional[int], str, str
+]:
+    rows = _query_rows(
+        conn,
+        "SELECT ct_version,standard_type FROM project_config WHERE project_id=%s LIMIT 1",
+        (project_id,),
+    )
+    configured = normalize_text((rows[0] if rows else {}).get("ct_version"))
+    standard_type = normalize_text((rows[0] if rows else {}).get("standard_type")) or "SDTM"
+    standard_type = standard_type.split(",", 1)[0].upper()
+    package_id = None
+    release_date = ""
+    if configured:
+        match = re.search(r"\d{4}-\d{2}-\d{2}", configured)
+        if not match:
+            raise ValueError(f"configured CT version has no release date: {configured}")
+        release_date = match.group(0)
+        packages = _query_rows(
+            conn,
+            "SELECT id FROM ct_package WHERE release_date=%s "
+            "AND UPPER(standard_type)=%s AND language_code='EN' LIMIT 1",
+            (release_date, standard_type),
+        )
+        if not packages:
+            raise ValueError(f"configured CT version not found: {configured}")
+        package_id = packages[0]["id"]
+    else:
+        packages = _query_rows(
+            conn,
+            "SELECT id, release_date FROM ct_package WHERE UPPER(standard_type)=%s "
+            "AND language_code='EN' ORDER BY release_date DESC LIMIT 1",
+            (standard_type,),
+        )
+        if packages:
+            package_id = packages[0]["id"]
+            release_date = str(packages[0].get("release_date") or "")
+    if not package_id:
+        return {}, {}, {}, None, release_date, ""
+    terms = _query_rows(
+        conn,
+        "SELECT codelist_code,codelist_name,term_code,cdisc_submission_value "
+        "FROM ct_term WHERE package_id=%s",
+        (package_id,),
+    )
+    names: Dict[str, str] = {}
+    headers: Dict[str, str] = {}
+    term_codes: Dict[Tuple[str, str], str] = {}
+    for row in terms:
+        submission = normalize_text(row.get("cdisc_submission_value")).upper()
+        codelist_code = normalize_text(row.get("codelist_code")).upper()
+        term_code = normalize_text(row.get("term_code"))
+        if not codelist_code:
+            if submission:
+                names[submission] = normalize_text(row.get("codelist_name"))
+                headers[submission] = term_code
+        elif submission:
+            term_codes[(codelist_code, submission)] = term_code
+    terminology = f"{standard_type} Terminology {release_date}" if release_date else ""
+    return names, headers, term_codes, package_id, release_date, terminology
 
-            # DOMAIN: collect all values across all datasets into one merged codelist
-            if subm_val.upper() == 'DOMAIN':
-                df = get_xpt(domain)
-                if df is not None and variable in df.columns:
-                    vals = df[variable].dropna().astype(str).str.strip()
-                    domain_all_values.extend(v for v in vals if v and v != 'nan')
-                if not domain_label and label:
-                    domain_label = label
-                continue
 
-            if subm_val.upper().endswith('TESTCD'):
-                prefix = subm_val.upper().replace('TESTCD', '')
-                testcd_test_pairs.setdefault(prefix, {})
-                testcd_test_pairs[prefix]['testcd_var'] = variable
-                testcd_test_pairs[prefix]['testcd_subm'] = subm_val
-                testcd_test_pairs[prefix]['domain'] = domain
-                testcd_test_pairs[prefix]['testcd_label'] = label
-                continue
-            if subm_val.upper().endswith('TEST') and not subm_val.upper().endswith('IETEST'):
-                prefix = subm_val.upper().replace('TEST', '')
-                testcd_test_pairs.setdefault(prefix, {})
-                testcd_test_pairs[prefix]['test_var'] = variable
-                testcd_test_pairs[prefix]['test_subm'] = subm_val
-                testcd_test_pairs[prefix]['domain'] = domain
-                testcd_test_pairs[prefix]['test_label'] = label
-                continue
+def _column(frame: Optional[pd.DataFrame], variable: str, submission_value: str) -> str:
+    if frame is None:
+        return ""
+    for candidate in (variable, submission_value):
+        candidate = normalize_text(candidate).upper()
+        if candidate and candidate in frame.columns:
+            return candidate
+    return ""
 
-            if subm_val.upper().endswith('PARMCD'):
-                prefix = subm_val.upper()[:-6]  # remove 'PARMCD'
-                testcd_test_pairs.setdefault(prefix, {})
-                testcd_test_pairs[prefix]['testcd_var'] = variable
-                testcd_test_pairs[prefix]['testcd_subm'] = subm_val
-                testcd_test_pairs[prefix]['domain'] = domain
-                testcd_test_pairs[prefix]['testcd_label'] = label
-                continue
-            if subm_val.upper().endswith('PARM') and not subm_val.upper().endswith('PARMCD') and len(subm_val) > 4:
-                prefix = subm_val.upper()[:-4]  # remove 'PARM'
-                testcd_test_pairs.setdefault(prefix, {})
-                testcd_test_pairs[prefix]['test_var'] = variable
-                testcd_test_pairs[prefix]['test_subm'] = subm_val
-                testcd_test_pairs[prefix]['domain'] = domain
-                testcd_test_pairs[prefix]['test_label'] = label
-                continue
 
-            general_vars.append({
-                'domain': domain,
-                'variable': variable,
-                'subm_val': subm_val,
-                'label': label,
-            })
+def _pair_kind(submission_value: str) -> Optional[Tuple[str, str]]:
+    upper = submission_value.upper()
+    for suffix, role in (("TESTCD", "code"), ("TEST", "text"), ("PARMCD", "code"), ("PARM", "text")):
+        if upper.endswith(suffix):
+            family = suffix.replace("CD", "")
+            return upper[:-len(suffix)] + family, role
+    return None
 
-        # 1a. DOMAIN merged codelist
-        if domain_all_values:
-            unique_domains = sorted(set(domain_all_values))
-            terms = _sort_terms([{'code': v, 'codeDes': ''} for v in unique_domains])
-            add_codelist('DOMAIN', domain_label, terms)
-            print(f"  DOMAIN: {len(terms)} terms (merged from all datasets)")
 
-        # 1b. TESTCD/TEST and PARMCD/PARM pairs - extract from XPT unique values
-        for prefix, info in testcd_test_pairs.items():
-            domain = info.get('domain', '')
-            df = get_xpt(domain) if domain else None
-            if df is None:
-                continue
-
-            testcd_var = info.get('testcd_var', '').upper()
-            test_var = info.get('test_var', '').upper()
-            testcd_subm = info.get('testcd_subm', '')
-            test_subm = info.get('test_subm', '')
-            testcd_vcd = f"{domain}.{testcd_var}" if testcd_var else ''
-            test_vcd = f"{domain}.{test_var}" if test_var else ''
-
-            if testcd_var in df.columns:
-                if test_var and test_var in df.columns:
-                    pairs = df[[testcd_var, test_var]].drop_duplicates()
-                    pairs = pairs.dropna(subset=[testcd_var])
-                    pairs = pairs[pairs[testcd_var].astype(str).str.strip() != '']
-                    pairs = pairs.sort_values(testcd_var).reset_index(drop=True)
-
-                    testcd_terms = []
-                    test_terms = []
-                    for _, r in pairs.iterrows():
-                        cd_val = str(r[testcd_var]).strip()
-                        t_val = str(r[test_var]).strip()
-                        if cd_val:
-                            testcd_terms.append({'code': cd_val, 'codeDes': t_val})
-                            test_terms.append({'code': t_val, 'codeDes': ''})
-
-                    add_codelist(testcd_vcd, info.get('testcd_label', ''), testcd_terms,
-                                 subm_val=testcd_subm)
-                    add_codelist(test_vcd, info.get('test_label', ''), test_terms,
-                                 subm_val=test_subm)
-                    print(f"  {testcd_vcd}: {len(testcd_terms)} terms from {domain}.{testcd_var}")
-                else:
-                    vals = df[testcd_var].dropna().astype(str).str.strip()
-                    vals = vals[vals != ''].unique()
-                    terms = [{'code': v, 'codeDes': ''} for v in sorted(vals)]
-                    add_codelist(testcd_vcd, info.get('testcd_label', ''), terms,
-                                 subm_val=testcd_subm)
-                    print(f"  {testcd_vcd}: {len(terms)} terms from {domain}.{testcd_var}")
-
-        # 1c. General variables - each domain.variable extracted independently
-        for info in general_vars:
-            domain = info['domain']
-            variable = info['variable']
-            subm_val = info['subm_val']
-            label = info['label']
-            vcd = f"{domain}.{variable}"
-
-            df = get_xpt(domain)
-            if df is None:
-                continue
-
-            col = variable.upper()
-            if col not in df.columns:
-                col = subm_val.upper()
-            if col not in df.columns:
-                continue
-
-            vals = df[col].dropna().astype(str).str.strip()
-            vals = vals[vals != ''].unique()
-            vals = sorted(vals)
-
-            if not vals:
-                print(f"  {vcd}: skipped (no data in {domain}.{col})")
-                continue
-
-            paired_col = None
-            if col.endswith('CD'):
-                base = col[:-2]
-                if base in df.columns:
-                    paired_col = base
-
-            terms = []
-            if paired_col and paired_col in df.columns:
-                pairs = df[[col, paired_col]].drop_duplicates()
-                pairs = pairs.dropna(subset=[col])
-                pairs = pairs[pairs[col].astype(str).str.strip() != '']
-                pairs = pairs.sort_values(col).reset_index(drop=True)
-                for _, r in pairs.iterrows():
-                    code_val = str(r[col]).strip()
-                    des_val = str(r[paired_col]).strip()
-                    if code_val:
-                        terms.append({'code': code_val, 'codeDes': des_val})
-            else:
-                terms = [{'code': v, 'codeDes': ''} for v in vals]
-
-            data_type = 'Char'
-            if _infer_data_type([t['code'] for t in terms]) != 'text':
-                data_type = 'Num'
-
-            terms = _sort_terms(terms)
-            add_codelist(vcd, label, terms, data_type, subm_val=subm_val)
-            print(f"  {vcd}: {len(terms)} terms from {domain}.{col}")
-
-        # ── Part 2: VLM-level codelists ──────────────────────────────────
-        print("\n=== Part 2: VLM-level codelists ===")
-        with conn.cursor(pymysql.cursors.DictCursor) as cur:
-            sql = ("SELECT id, dataset, variable, where_clause, label "
-                   "FROM sas_vlm_data WHERE project_id = %s")
-            params = [project_id]
-            if username:
-                sql += " AND username = %s"
-                params.append(username)
-            sql += " ORDER BY dataset, sort_order"
-            cur.execute(sql, params)
-            vlm_rows = cur.fetchall()
-
-        vlm_codelist_ids = []
-
-        for row in vlm_rows:
-            ds = (row.get('dataset') or '').upper()
-            variable = (row.get('variable') or '').upper()
-            wc = row.get('where_clause') or ''
-            vlm_label = row.get('label') or ''
-            vlm_id = row['id']
-
-            df = get_xpt(ds)
-            if df is None:
-                continue
-
-            parsed = parse_where_clause(wc)
-            if not parsed:
-                continue
-
-            filter_col, filter_val = parsed
-
-            # Determine column to check: prefer --STRESC over --ORRES
-            stresc_col = None
-            if variable.endswith('ORRES'):
-                stresc_col = variable[:-5] + 'STRESC'
-
-            check_col = None
-            if stresc_col and stresc_col in df.columns:
-                check_col = stresc_col
-            elif variable in df.columns:
-                check_col = variable
-            else:
-                continue
-
-            # Apply where clause filter
-            if filter_col in df.columns:
-                src = df[filter_col]
-                if src.dtype == object:
-                    mask = src.str.strip() == filter_val
-                else:
-                    try:
-                        mask = src == float(filter_val)
-                    except (ValueError, TypeError):
-                        mask = src.astype(str).str.strip() == filter_val
-                filtered = df.loc[mask, check_col].dropna()
-            else:
-                continue
-
-            vals = filtered.astype(str).str.strip()
-            vals = vals[vals != ''].unique()
-
-            if len(vals) == 0:
-                continue
-
-            all_numeric = all(_is_numeric(v) for v in vals)
-            if all_numeric:
-                continue
-
-            codelist_id = f"{ds}.{variable}.{filter_val}"
-            terms = _sort_terms([{'code': v, 'codeDes': ''} for v in sorted(vals)])
-            add_codelist(codelist_id, vlm_label, terms)
-            vlm_codelist_ids.append((vlm_id, codelist_id))
-            print(f"  {codelist_id}: {len(terms)} terms")
-
-        # Update sas_vlm_data.codelist column
-        if vlm_codelist_ids:
-            with conn.cursor() as cur:
-                update_sql = "UPDATE sas_vlm_data SET codelist=%s, updated_time=NOW() WHERE id=%s"
-                for vlm_id, cl_id in vlm_codelist_ids:
-                    cur.execute(update_sql, (cl_id, vlm_id))
-                # Clear codelist for rows that have no codelist
-                all_vlm_ids = set(r['id'] for r in vlm_rows)
-                filled_ids = set(vid for vid, _ in vlm_codelist_ids)
-                unfilled_ids = all_vlm_ids - filled_ids
-                for uid in unfilled_ids:
-                    cur.execute(update_sql, (None, uid))
-            conn.commit()
-            print(f"  Updated {len(vlm_codelist_ids)} VLM codelist references")
-
-        # ── Part 3: Write to sas_codelist_data ───────────────────────────
-        print("\n=== Writing codelist data to DB ===")
-        with conn.cursor() as cur:
-            if username:
-                cur.execute("DELETE FROM sas_codelist_data WHERE project_id = %s AND username = %s "
-                            "AND (created_by IS NULL OR created_by NOT IN ('extract_vlm_codelist'))",
-                            (project_id, username))
-            else:
-                cur.execute("DELETE FROM sas_codelist_data WHERE project_id = %s "
-                            "AND (created_by IS NULL OR created_by NOT IN ('extract_vlm_codelist'))",
-                            (project_id,))
-            deleted = cur.rowcount
-            print(f"  Cleared {deleted} old codelist rows")
-
-            insert_sql = """
-            INSERT INTO sas_codelist_data
-                (project_id, username, vcd, vlabel, type, cdnum, code, code_des, sort_order, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """
-
-            total_inserted = 0
-            global_order = 0
-            for vcd in sorted(codelist_map.keys()):
-                entry = codelist_map[vcd]
-                terms = entry['terms']
-                if not terms:
-                    continue
-                vlabel = entry['vlabel']
-                dtype = entry['type']
-                for idx, term in enumerate(terms, 1):
-                    global_order += 1
-                    cur.execute(insert_sql, (
-                        project_id, username, vcd, vlabel, dtype,
-                        idx, term['code'], term['codeDes'],
-                        global_order, 'codelist_extractor'
-                    ))
-                    total_inserted += 1
-
-        conn.commit()
-        print(f"\n[DONE] Inserted {total_inserted} codelist rows for {len(codelist_map)} unique IDs.")
-
-        # ── Part 3b: Update sas_project_spec.codelist to match vcd ───────
-        print("\n=== Updating sas_project_spec.codelist references ===")
-        spec_update_count = 0
-        with conn.cursor() as cur:
-            # Build domain.variable → vcd mapping from codelist_map
-            dv_to_vcd: Dict[str, str] = {}
-            for vcd, entry in codelist_map.items():
-                if not entry['terms']:
-                    continue
-                dv_to_vcd[vcd.upper()] = vcd
-
-            # Also map TESTCD/TEST pairs
-            for prefix, info in testcd_test_pairs.items():
-                domain = info.get('domain', '')
-                for var_key in ('testcd_var', 'test_var'):
-                    var = info.get(var_key, '').upper()
-                    if var:
-                        key = f"{domain}.{var}"
-                        if key.upper() in dv_to_vcd:
-                            dv_to_vcd[key.upper()] = dv_to_vcd[key.upper()]
-
-            for row in spec_rows:
-                subm_val = (row.get('cdisc_submission_value') or '').strip()
-                if not subm_val:
-                    continue
-                domain = (row.get('domain') or '').strip().upper()
-                variable = (row.get('variable') or '').strip().upper()
-                dv_key = f"{domain}.{variable}".upper()
-
-                if subm_val.upper() == 'DOMAIN':
-                    new_cl = 'DOMAIN'
-                elif subm_val.upper() in ('MEDDRA', 'WHODRUG'):
-                    continue
-                elif dv_key in dv_to_vcd:
-                    new_cl = dv_to_vcd[dv_key]
-                else:
-                    new_cl = None
-
-                old_cl = (row.get('codelist') or '').strip()
-                if new_cl != old_cl:
-                    if username:
-                        cur.execute(
-                            "UPDATE sas_project_spec SET codelist=%s, updated_time=NOW() "
-                            "WHERE project_id=%s AND username=%s AND domain=%s AND variable=%s",
-                            (new_cl, project_id, username, domain, variable))
-                    else:
-                        cur.execute(
-                            "UPDATE sas_project_spec SET codelist=%s, updated_time=NOW() "
-                            "WHERE project_id=%s AND domain=%s AND variable=%s",
-                            (new_cl, project_id, domain, variable))
-                    spec_update_count += 1
-        conn.commit()
-        print(f"  Updated {spec_update_count} spec codelist references")
-
-        # ── Part 4: Write MEDDRA / WHODRUG to sas_dictionaries_data ──────
-        if dict_ids_seen:
-            print("\n=== Writing dictionaries data to DB ===")
-            DICT_META = {
-                'MEDDRA': {'name': 'Adverse Event Dictionary', 'dictionary': 'MEDDRA'},
-                'WHODRUG': {'name': 'Drug Dictionary', 'dictionary': 'WHODRUG'},
+def _build_variables(
+    draft: Draft,
+    rows: List[dict],
+    cache: DatasetCache,
+    ct_names: Dict[str, str],
+    ct_headers: Dict[str, str],
+    ct_terms: Dict[Tuple[str, str], str],
+    terminology: str,
+) -> None:
+    draft.metadata_counts["VARIABLES"] = len(rows)
+    pairs: Dict[Tuple[str, str], dict] = {}
+    general = []
+    domain_values: List[str] = []
+    domain_label = ""
+    for row in rows:
+        row_id = int(row["id"])
+        domain = normalize_text(row.get("domain")).upper()
+        variable = normalize_text(row.get("variable")).upper()
+        submission = normalize_text(row.get("cdisc_submission_value"))
+        label = normalize_text(row.get("label"))
+        if not submission or not domain or not variable:
+            continue
+        existing_reference = normalize_text(row.get("codelist"))
+        reference_source = normalize_text(row.get("updated_by"))
+        if not existing_reference or reference_source in SYSTEM_REFERENCE_SOURCES:
+            draft.spec_references[row_id] = None
+        if submission.upper() in ("MEDDRA", "WHODRUG"):
+            draft.dictionaries.add(submission.upper())
+            continue
+        if submission.upper() == "DOMAIN":
+            frame = cache.get(domain, (variable,))
+            column = _column(frame, variable, submission)
+            if not column:
+                frame = cache.get(domain, (submission.upper(),))
+                column = _column(frame, variable, submission)
+            if column:
+                domain_values.extend(frame[column].tolist())
+                domain_label = domain_label or label
+                if row_id in draft.spec_references:
+                    draft.spec_references[row_id] = "DOMAIN"
+            continue
+        pair_kind = _pair_kind(submission)
+        if pair_kind:
+            family, role = pair_kind
+            info = pairs.setdefault((domain, family), {})
+            info[role] = {
+                "id": row_id, "variable": variable, "submission": submission, "label": label
             }
-            with conn.cursor() as cur:
-                cur.execute(
-                    "DELETE FROM sas_dictionaries_data WHERE project_id = %s AND username = %s",
-                    (project_id, username))
-                d_order = 0
-                for did in sorted(dict_ids_seen):
-                    meta = DICT_META.get(did, {})
-                    d_order += 1
-                    cur.execute(
+            continue
+        general.append(row)
+
+    domain_terms = [{"code": value, "codeDes": ""} for value in sorted(dedupe_values(domain_values), key=str.casefold)]
+    draft.add(
+        VAR_SOURCE, "DOMAIN", domain_label, sort_terms(domain_terms),
+        submission_value="DOMAIN", ct_names=ct_names, ct_headers=ct_headers,
+        ct_terms=ct_terms, terminology=terminology,
+    )
+
+    for (domain, _family), info in pairs.items():
+        code_info = info.get("code")
+        text_info = info.get("text")
+        if not code_info:
+            if text_info:
+                general.append(next(row for row in rows if int(row["id"]) == text_info["id"]))
+            continue
+        required = [code_info["variable"]]
+        if text_info:
+            required.append(text_info["variable"])
+        frame = cache.get(domain, required)
+        if frame is None or not all(
+            _column(frame, item["variable"], item["submission"])
+            for item in (code_info, text_info) if item
+        ):
+            submission_columns = [code_info["submission"]]
+            if text_info:
+                submission_columns.append(text_info["submission"])
+            frame = cache.get(domain, submission_columns)
+        code_col = _column(frame, code_info["variable"], code_info["submission"])
+        text_col = _column(frame, text_info["variable"], text_info["submission"]) if text_info else ""
+        if not code_col:
+            continue
+        code_terms, text_terms = extract_paired_terms(frame, code_col, text_col)
+        code_vcd = f"{domain}.{code_info['variable']}"
+        draft.add(
+            VAR_SOURCE, code_vcd, code_info["label"], code_terms,
+            submission_value=code_info["submission"], ct_names=ct_names,
+            ct_headers=ct_headers, ct_terms=ct_terms, terminology=terminology,
+        )
+        if code_terms and code_info["id"] in draft.spec_references:
+            draft.spec_references[code_info["id"]] = code_vcd
+        if text_info and text_terms:
+            text_vcd = f"{domain}.{text_info['variable']}"
+            draft.add(
+                VAR_SOURCE, text_vcd, text_info["label"], text_terms,
+                submission_value=text_info["submission"], ct_names=ct_names,
+                ct_headers=ct_headers, ct_terms=ct_terms, terminology=terminology,
+            )
+            if text_info["id"] in draft.spec_references:
+                draft.spec_references[text_info["id"]] = text_vcd
+
+    for row in general:
+        row_id = int(row["id"])
+        domain = normalize_text(row.get("domain")).upper()
+        variable = normalize_text(row.get("variable")).upper()
+        submission = normalize_text(row.get("cdisc_submission_value"))
+        frame = cache.get(domain, (variable,))
+        column = _column(frame, variable, submission)
+        if not column and submission:
+            frame = cache.get(domain, (submission.upper(),))
+            column = _column(frame, variable, submission)
+        if not column:
+            continue
+        paired = column[:-2] if column.endswith("CD") and column[:-2] in frame.columns else ""
+        if paired:
+            terms, _ = extract_paired_terms(frame, column, paired)
+        else:
+            terms = extract_unique_terms(frame, column)
+        vcd = f"{domain}.{variable}"
+        draft.add(
+            VAR_SOURCE, vcd, row.get("label", ""), sort_terms(terms),
+            infer_data_type([term["code"] for term in terms]), submission,
+            ct_names, ct_headers, ct_terms, terminology,
+        )
+        if terms and row_id in draft.spec_references:
+            draft.spec_references[row_id] = vcd
+
+
+def _build_vlm(
+    draft: Draft,
+    rows: List[dict],
+    cache: DatasetCache,
+    ct_names: Dict[str, str],
+    ct_headers: Dict[str, str],
+    ct_terms: Dict[Tuple[str, str], str],
+    terminology: str,
+) -> None:
+    draft.metadata_counts["VLM"] = len(rows)
+    for row in rows:
+        row_id = int(row["id"])
+        existing_reference = normalize_text(row.get("codelist"))
+        reference_source = normalize_text(row.get("updated_by"))
+        if not existing_reference or reference_source in SYSTEM_REFERENCE_SOURCES:
+            draft.vlm_references[row_id] = None
+        dataset = normalize_text(row.get("dataset")).upper()
+        variable = normalize_text(row.get("variable")).upper()
+        parsed = parse_where_clause(row.get("where_clause") or "")
+        if not dataset or not variable or not parsed:
+            continue
+        filter_col, filter_value = parsed
+        check_candidates = []
+        if variable.endswith("ORRES"):
+            check_candidates.append(variable[:-5] + "STRESC")
+        check_candidates.append(variable)
+        frame = None
+        check_col = ""
+        for candidate in check_candidates:
+            candidate_frame = cache.get(dataset, (filter_col, candidate))
+            if candidate_frame is not None and filter_col in candidate_frame.columns and candidate in candidate_frame.columns:
+                frame, check_col = candidate_frame, candidate
+                break
+        if frame is None:
+            continue
+        mask = frame[filter_col].map(normalize_text).str.casefold() == filter_value.casefold()
+        values = dedupe_values(frame.loc[mask, check_col].tolist())
+        if not values or all(_is_numeric(value) for value in values):
+            continue
+        codelist_id = f"{dataset}.{variable}.{filter_value}"
+        terms = sort_terms([{"code": value, "codeDes": ""} for value in values])
+        draft.add(
+            VLM_SOURCE, codelist_id, row.get("label", ""), terms,
+            data_type=infer_data_type(values),
+            submission_value=row.get("cdisc_submission_value") or variable,
+            ct_names=ct_names, ct_headers=ct_headers, ct_terms=ct_terms,
+            terminology=terminology,
+        )
+        if row_id in draft.vlm_references:
+            draft.vlm_references[row_id] = codelist_id
+
+
+def _validate_draft(draft: Draft, scope: str) -> None:
+    requested = [VAR_SOURCE, VLM_SOURCE] if scope == "ALL" else [
+        VAR_SOURCE if scope == "VARIABLES" else VLM_SOURCE
+    ]
+    if any(draft.metadata_counts["VARIABLES" if source == VAR_SOURCE else "VLM"] == 0 for source in requested):
+        missing = ["VARIABLES" if source == VAR_SOURCE else "VLM" for source in requested
+                   if draft.metadata_counts["VARIABLES" if source == VAR_SOURCE else "VLM"] == 0]
+        raise ValueError("no source metadata rows for: " + ", ".join(missing))
+    generated = [entry for (source, _), entry in draft.codelists.items() if source in requested and entry["terms"]]
+    if not generated:
+        raise ValueError("draft contains no codelists; existing database rows were preserved")
+    for entry in generated:
+        if not entry["vcd"] or any(not term["code"] for term in entry["terms"]):
+            raise ValueError(f"invalid draft codelist: {entry['vcd']!r}")
+
+
+def _scope_sources(scope: str) -> List[str]:
+    if scope == "VARIABLES":
+        return [VAR_SOURCE]
+    if scope == "VLM":
+        return [VLM_SOURCE]
+    return [VAR_SOURCE, VLM_SOURCE]
+
+
+def _deleted_vcds(conn, project_id: str, username: str) -> set:
+    try:
+        rows = _query_rows(
+            conn,
+            "SELECT vcd FROM sas_codelist_deleted WHERE project_id=%s AND username=%s",
+            (project_id, username),
+        )
+        return {normalize_text(row.get("vcd")).casefold() for row in rows}
+    except pymysql.MySQLError as exc:
+        if getattr(exc, "args", [None])[0] == 1146:
+            return set()
+        raise
+
+
+def _merge_rules(conn, project_id: str, username: str) -> Dict[str, str]:
+    try:
+        rows = _query_rows(
+            conn,
+            "SELECT original_vcd,merged_vcd FROM sas_codelist_merge_log "
+            "WHERE project_id=%s AND username=%s AND original_vcd IS NOT NULL "
+            "AND merged_vcd IS NOT NULL ORDER BY id",
+            (project_id, username),
+        )
+        return {
+            normalize_text(row.get("original_vcd")).casefold(): normalize_text(row.get("merged_vcd"))
+            for row in rows
+            if normalize_text(row.get("original_vcd")) and normalize_text(row.get("merged_vcd"))
+        }
+    except pymysql.MySQLError as exc:
+        if getattr(exc, "args", [None])[0] == 1146:
+            return {}
+        raise
+
+
+def _write_draft(conn, draft: Draft, project_id: str, username: str, scope: str) -> dict:
+    sources = _scope_sources(scope)
+    deleted_vcds = _deleted_vcds(conn, project_id, username)
+    merge_rules = _merge_rules(conn, project_id, username)
+    entries = [
+        entry for (source, _), entry in draft.codelists.items()
+        if source in sources and entry["vcd"].casefold() not in deleted_vcds
+    ]
+    inserted = 0
+    updated = 0
+    deleted = 0
+    spec_updated = 0
+    vlm_updated = 0
+    reapplied_merges = 0
+    with conn.cursor() as cursor:
+        replacement_sources = list(sources)
+        if VAR_SOURCE in sources:
+            replacement_sources.extend(LEGACY_VAR_SOURCES)
+        if VLM_SOURCE in sources:
+            replacement_sources.extend(LEGACY_VLM_SOURCES)
+        if scope == "ALL":
+            replacement_sources.append(SOURCE_PREFIX)
+        placeholders = ",".join(["%s"] * len(replacement_sources))
+        cursor.execute(
+            f"SELECT id,vcd,code FROM sas_codelist_data "
+            f"WHERE project_id=%s AND username=%s AND created_by IN ({placeholders}) "
+            "ORDER BY id",
+            (project_id, username, *replacement_sources),
+        )
+        existing_rows = list(cursor.fetchall())
+        if scope != "ALL":
+            dot_comparison = "<= 1" if scope == "VARIABLES" else ">= 2"
+            cursor.execute(
+                "SELECT id,vcd,code FROM sas_codelist_data "
+                "WHERE project_id=%s AND username=%s AND created_by=%s "
+                f"AND (LENGTH(vcd)-LENGTH(REPLACE(vcd,'.',''))) {dot_comparison} ORDER BY id",
+                (project_id, username, SOURCE_PREFIX),
+            )
+            existing_rows.extend(cursor.fetchall())
+        cursor.execute(
+            f"SELECT vcd,code FROM sas_codelist_data "
+            f"WHERE project_id=%s AND username=%s "
+            f"AND (created_by IS NULL OR created_by NOT IN ({placeholders}))",
+            (project_id, username, *replacement_sources),
+        )
+        manual_keys = {
+            (normalize_text(row[0]).casefold(), normalize_text(row[1]).casefold())
+            for row in cursor.fetchall()
+        }
+        existing_by_key: Dict[Tuple[str, str], List[dict]] = {}
+        for row in existing_rows:
+            key = (normalize_text(row[1]).casefold(), normalize_text(row[2]).casefold())
+            existing_by_key.setdefault(key, []).append({"id": row[0]})
+
+        insert_sql = (
+            "INSERT INTO sas_codelist_data "
+            "(project_id,username,vcd,vlabel,nci_codelist_code,type,terminology,cdnum,"
+            "code,nci_term_code,code_des,origin,sort_order,created_by,updated_by) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+        )
+        update_sql = (
+            "UPDATE sas_codelist_data SET vlabel=%s,nci_codelist_code=%s,type=%s,"
+            "terminology=%s,cdnum=%s,code=%s,nci_term_code=%s,code_des=%s,"
+            "origin=%s,sort_order=%s,created_by=%s,updated_by=%s,updated_time=NOW() WHERE id=%s"
+        )
+        global_order = 0
+        retained_ids = set()
+        for entry in sorted(entries, key=lambda item: (item["source"], item["vcd"].casefold())):
+            origin = (
+                ".".join(entry["vcd"].split(".")[:2]) + ".VLM"
+                if entry["source"] == VLM_SOURCE else entry["vcd"]
+            )
+            for order, term in enumerate(sort_terms(entry["terms"]), 1):
+                global_order += 1
+                key = (entry["vcd"].casefold(), term["code"].casefold())
+                if key in manual_keys:
+                    continue
+                candidates = existing_by_key.get(key, [])
+                if candidates:
+                    row_id = candidates.pop(0)["id"]
+                    retained_ids.add(row_id)
+                    cursor.execute(update_sql, (
+                        entry["vlabel"], entry["nciCodelistCode"], entry["type"],
+                        entry["terminology"], order, term["code"], term["nciTermCode"],
+                        term["codeDes"], origin, global_order, entry["source"],
+                        entry["source"], row_id,
+                    ))
+                    updated += 1
+                else:
+                    cursor.execute(insert_sql, (
+                        project_id, username, entry["vcd"], entry["vlabel"],
+                        entry["nciCodelistCode"], entry["type"], entry["terminology"],
+                        order, term["code"], term["nciTermCode"], term["codeDes"],
+                        origin, global_order, entry["source"], entry["source"],
+                    ))
+                    inserted += 1
+
+        stale_ids = [row["id"] for rows in existing_by_key.values() for row in rows
+                     if row["id"] not in retained_ids]
+        if stale_ids:
+            for start in range(0, len(stale_ids), 500):
+                batch = stale_ids[start:start + 500]
+                cursor.execute(
+                    "DELETE FROM sas_codelist_data WHERE id IN (" + ",".join(["%s"] * len(batch)) + ")",
+                    batch,
+                )
+                deleted += cursor.rowcount
+
+        if VAR_SOURCE in sources:
+            spec_updates = []
+            for row_id, codelist in draft.spec_references.items():
+                if codelist and codelist.casefold() in deleted_vcds:
+                    codelist = None
+                elif codelist and codelist.casefold() in merge_rules:
+                    merged = merge_rules[codelist.casefold()]
+                    codelist = None if merged.casefold() in deleted_vcds else merged
+                    reapplied_merges += 1
+                spec_updates.append((codelist, VAR_SOURCE, row_id))
+            if spec_updates:
+                cursor.executemany(
+                    "UPDATE sas_project_spec SET codelist=%s,updated_by=%s,updated_time=NOW() WHERE id=%s",
+                    spec_updates,
+                )
+                spec_updated = cursor.rowcount
+            dictionary_sources = (VAR_SOURCE, *LEGACY_VAR_SOURCES, SOURCE_PREFIX)
+            cursor.execute(
+                "SELECT id,dictionary_id,name,dictionary,version,created_by "
+                "FROM sas_dictionaries_data WHERE project_id=%s AND username=%s ORDER BY id",
+                (project_id, username),
+            )
+            dictionary_rows = list(cursor.fetchall())
+            metadata = {
+                "MEDDRA": ("Adverse Event Dictionary", "MEDDRA"),
+                "WHODRUG": ("Drug Dictionary", "WHODRUG"),
+            }
+            retained_dictionary_ids = set()
+            for order, dictionary_id in enumerate(sorted(draft.dictionaries), 1):
+                matches = [
+                    row for row in dictionary_rows
+                    if normalize_text(row[1]).upper() == dictionary_id
+                ]
+                manual = next(
+                    (row for row in matches if normalize_text(row[5]) not in dictionary_sources),
+                    None,
+                )
+                if manual:
+                    retained_dictionary_ids.add(manual[0])
+                    continue
+                generated = matches[0] if matches else None
+                name, dictionary = metadata[dictionary_id]
+                if generated:
+                    retained_dictionary_ids.add(generated[0])
+                    cursor.execute(
+                        "UPDATE sas_dictionaries_data SET name=%s,data_type='text',dictionary=%s,"
+                        "sort_order=%s,created_by=%s,updated_time=NOW() WHERE id=%s",
+                        (
+                            normalize_text(generated[2]) or name,
+                            normalize_text(generated[3]) or dictionary,
+                            order, VAR_SOURCE, generated[0],
+                        ),
+                    )
+                else:
+                    cursor.execute(
                         "INSERT INTO sas_dictionaries_data "
-                        "(project_id, username, dictionary_id, name, data_type, dictionary, version, sort_order, created_by) "
-                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                        (project_id, username, did,
-                         meta.get('name', ''), 'text',
-                         meta.get('dictionary', did), '',
-                         d_order, 'codelist_extractor'))
-                    print(f"  Dictionary written: {did}")
-            conn.commit()
+                        "(project_id,username,dictionary_id,name,data_type,dictionary,version,sort_order,created_by) "
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                        (
+                            project_id, username, dictionary_id, name, "text",
+                            dictionary, "", order, VAR_SOURCE,
+                        ),
+                    )
+            stale_dictionary_ids = [
+                row[0] for row in dictionary_rows
+                if normalize_text(row[5]) in dictionary_sources
+                and row[0] not in retained_dictionary_ids
+            ]
+            if stale_dictionary_ids:
+                cursor.execute(
+                    "DELETE FROM sas_dictionaries_data WHERE id IN ("
+                    + ",".join(["%s"] * len(stale_dictionary_ids)) + ")",
+                    stale_dictionary_ids,
+                )
 
-        return True
+        if VLM_SOURCE in sources:
+            vlm_updates = []
+            for row_id, codelist in draft.vlm_references.items():
+                if codelist and codelist.casefold() in deleted_vcds:
+                    codelist = None
+                elif codelist and codelist.casefold() in merge_rules:
+                    merged = merge_rules[codelist.casefold()]
+                    codelist = None if merged.casefold() in deleted_vcds else merged
+                    reapplied_merges += 1
+                vlm_updates.append((codelist, VLM_SOURCE, row_id))
+            if vlm_updates:
+                cursor.executemany(
+                    "UPDATE sas_vlm_data SET codelist=%s,updated_by=%s,updated_time=NOW() WHERE id=%s",
+                    vlm_updates,
+                )
+                vlm_updated = cursor.rowcount
+    written_terms = [
+        term for entry in entries for term in entry["terms"]
+    ]
+    return {
+        "inserted": inserted,
+        "updated": updated,
+        "deletedSystemRows": deleted,
+        "specReferencesUpdated": spec_updated,
+        "vlmReferencesUpdated": vlm_updated,
+        "suppressedDeletedVcds": len([
+            entry for entry in draft.codelists.values()
+            if entry["source"] in sources and entry["vcd"].casefold() in deleted_vcds
+        ]),
+        "nciMatched": sum(1 for term in written_terms if term.get("nciTermCode")),
+        "nciUnmatched": sum(
+            1 for entry in entries if entry.get("nciCodelistCode")
+            for term in entry["terms"] if not term.get("nciTermCode")
+        ),
+        "reappliedMerges": reapplied_merges,
+        "preservedManual": len(manual_keys),
+    }
 
-    except Exception as e:
-        conn.rollback()
-        print(f"[ERROR] {e}")
-        import traceback
+
+def run(project_id: str, data_path: str, username: str = "", scope: str = "") -> dict:
+    scope = normalize_text(scope or os.environ.get("EXTRACT_SCOPE", "ALL")).upper()
+    result = {
+        "success": False,
+        "projectId": project_id,
+        "scope": scope,
+        "draftValidated": False,
+        "datasets": [],
+        "fallbacks": [],
+        "counts": {},
+        "errors": [],
+        "warnings": [],
+    }
+    conn = None
+    lock_name = ""
+    lock_acquired = False
+    try:
+        if scope not in VALID_SCOPES:
+            raise ValueError(f"EXTRACT_SCOPE must be one of {sorted(VALID_SCOPES)}, got {scope!r}")
+        data_dir = Path(data_path)
+        edc_path = os.environ.get("EDC_CODELIST_PATH", "")
+        if not data_dir.exists() and not edc_path:
+            raise FileNotFoundError(f"XPT path not found and no EDC fallback configured: {data_dir}")
+        conn = pymysql.connect(
+            **_get_db_config(), charset="utf8mb4", autocommit=False,
+        )
+        lock_digest = hashlib.sha256(f"{project_id}\0{username}".encode("utf-8")).hexdigest()[:40]
+        lock_name = "codelist:" + lock_digest
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT GET_LOCK(%s,0)", (lock_name,))
+            lock_acquired = cursor.fetchone()[0] == 1
+        if not lock_acquired:
+            raise RuntimeError("该项目正在执行 Codelist 提取，请稍后重试")
+        (
+            ct_names, ct_headers, ct_terms, package_id, ct_release, terminology
+        ) = _load_ct_lookup(conn, project_id)
+        cache = DatasetCache(data_dir, edc_path)
+        draft = Draft()
+
+        if scope in ("VARIABLES", "ALL"):
+            sql = (
+                "SELECT id,domain,variable,cdisc_submission_value,codelist,label,updated_by "
+                "FROM sas_project_spec WHERE project_id=%s"
+            )
+            params: List = [project_id]
+            if username:
+                sql += " AND username=%s"
+                params.append(username)
+            sql += " ORDER BY domain,variable"
+            _build_variables(
+                draft, _query_rows(conn, sql, params), cache,
+                ct_names, ct_headers, ct_terms, terminology,
+            )
+
+        if scope in ("VLM", "ALL"):
+            sql = (
+                "SELECT v.id,v.dataset,v.variable,v.where_clause,v.label,v.codelist,v.updated_by,"
+                "(SELECT p.cdisc_submission_value FROM sas_project_spec p "
+                " WHERE p.project_id=v.project_id AND p.username=v.username "
+                " AND UPPER(p.domain)=UPPER(v.dataset) AND UPPER(p.variable)=UPPER(v.variable) "
+                " LIMIT 1) AS cdisc_submission_value "
+                "FROM sas_vlm_data v WHERE v.project_id=%s"
+            )
+            params = [project_id]
+            if username:
+                sql += " AND v.username=%s"
+                params.append(username)
+            sql += " ORDER BY v.dataset,v.sort_order"
+            _build_vlm(
+                draft, _query_rows(conn, sql, params), cache,
+                ct_names, ct_headers, ct_terms, terminology,
+            )
+
+        _validate_draft(draft, scope)
+        result["draftValidated"] = True
+        result["datasets"] = [
+            {"dataset": dataset, "source": "XPT", "encoding": cache.encodings.get(dataset, ""),
+             "available": frame is not None, "rows": len(frame) if frame is not None else 0}
+            for dataset, frame in sorted(cache.cache.items())
+        ]
+        result["fallbacks"] = cache.fallbacks
+        if cache.edc.error:
+            result["warnings"].append(cache.edc.error)
+        result["warnings"].extend(cache.errors)
+        result["counts"] = _write_draft(conn, draft, project_id, username, scope)
+        result["counts"]["draftCodelists"] = len([
+            entry for entry in draft.codelists.values() if entry["source"] in _scope_sources(scope)
+        ])
+        result["counts"]["draftTerms"] = sum(
+            len(entry["terms"]) for entry in draft.codelists.values()
+            if entry["source"] in _scope_sources(scope)
+            and entry["vcd"].casefold() not in _deleted_vcds(conn, project_id, username)
+        )
+        result["ctPackageId"] = package_id
+        result["ctRelease"] = ct_release
+        conn.commit()
+        result["success"] = True
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        result["errors"].append(str(exc))
         traceback.print_exc()
-        return False
     finally:
-        conn.close()
+        if conn:
+            if lock_acquired:
+                try:
+                    with conn.cursor() as cursor:
+                        cursor.execute("SELECT RELEASE_LOCK(%s)", (lock_name,))
+                except Exception:
+                    pass
+            conn.close()
+    print("[RESULT] " + json.dumps(result, ensure_ascii=False, default=str))
+    counts = result.get("counts", {})
+    summary = {
+        "codelists": counts.get("draftCodelists", 0),
+        "terms": counts.get("draftTerms", 0),
+        "inserted": counts.get("inserted", 0),
+        "updated": counts.get("updated", 0),
+        "deleted": counts.get("deletedSystemRows", 0),
+        "specReferences": counts.get("specReferencesUpdated", 0),
+        "vlmReferences": counts.get("vlmReferencesUpdated", 0),
+        "skippedDeleted": counts.get("suppressedDeletedVcds", 0),
+        "nciMatched": counts.get("nciMatched", 0),
+        "nciUnmatched": counts.get("nciUnmatched", 0),
+        "reappliedMerges": counts.get("reappliedMerges", 0),
+        "preservedManual": counts.get("preservedManual", 0),
+        "failedDatasets": "|".join(sorted({
+            normalize_text(error).split(":", 1)[0] for error in result.get("warnings", [])
+            if ":" in normalize_text(error)
+        })),
+        "warningCount": len(result.get("warnings", [])),
+        "fallbackCount": len(result.get("fallbacks", [])),
+    }
+    print("__CODELIST_RESULT__=" + json.dumps(summary, ensure_ascii=False))
+    return result
 
 
-if __name__ == '__main__':
-    project_id = os.environ.get('PROJECT_ID', 'P001')
-    upload_base = os.environ.get('UPLOAD_BASE_PATH', 'C:/Project_Web/019_defineXML/uploads')
-    data_path = os.environ.get('DATA_PATH', os.path.join(upload_base, project_id, 'xpt'))
-    username = os.environ.get('USERNAME_CONTEXT', '')
+def main() -> int:
+    project_id = os.environ.get("PROJECT_ID", "P001")
+    upload_base = os.environ.get("UPLOAD_BASE_PATH", "C:/Project_Web/019_defineXML/uploads")
+    data_path = os.environ.get("DATA_PATH", os.path.join(upload_base, project_id, "xpt"))
+    username = os.environ.get("USERNAME_CONTEXT", "")
+    scope = os.environ.get("EXTRACT_SCOPE", os.environ.get("EXTRACTION_SCOPE", "ALL"))
+    result = run(project_id, data_path, username, scope)
+    return 0 if result.get("success") else 1
 
-    print("=== Codelist Extractor ===")
-    print(f"  Project: {project_id}")
-    print(f"  Data: {data_path}")
-    print(f"  User: {username or '(unspecified)'}")
 
-    success = run(project_id, data_path, username)
-    sys.exit(0 if success else 1)
+if __name__ == "__main__":
+    sys.exit(main())

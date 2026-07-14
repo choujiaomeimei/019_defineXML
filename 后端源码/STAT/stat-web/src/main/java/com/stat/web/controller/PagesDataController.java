@@ -4,6 +4,7 @@ import com.stat.common.dto.PagesDataDTO;
 import com.stat.common.result.CommonResult;
 import com.stat.common.security.UserContext;
 import com.stat.service.IPagesDataService;
+import com.stat.service.ProjectFilePathResolver;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,6 +28,9 @@ public class PagesDataController {
 
     @Autowired
     private IPagesDataService pagesDataService;
+
+    @Autowired
+    private ProjectFilePathResolver pathResolver;
 
     @Value("${app.python.path:C:/Project_Web/019_defineXML/Python}")
     private String pythonPath;
@@ -117,7 +121,8 @@ public class PagesDataController {
                 return CommonResult.failed("项目ID不能为空");
             }
 
-            File annotsFile = new File(uploadBasePath + "/" + projectId + "/output/Annots2.xlsx");
+            String standardType = pathResolver.resolveStandardType(projectId, request.get("standardType"));
+            File annotsFile = pathResolver.acrfAnnotations(projectId, standardType).toFile();
             if (!annotsFile.exists()) {
                 return CommonResult.failed("未找到aCRF注释文件 (Annots2.xlsx)。请先上传aCRF文件并确保处理成功，然后再提取Pages数据。");
             }
@@ -154,6 +159,11 @@ public class PagesDataController {
 
             Map<String, String> env = pb.environment();
             env.put("PYTHONIOENCODING", "utf-8");
+            env.put("ANNOTS_PATH", annotsFile.getAbsolutePath());
+            env.put("DATA_PATH", pathResolver.xptDirectory(projectId, standardType).toString());
+            env.put("SPEC_PATH", pathResolver.workspaceFile(projectId, standardType,
+                    com.stat.common.entity.FileUploadRecord.FileCategory.PROJECT_SPEC, "spec.xlsx").toString());
+            env.put("OUTPUT_PATH", pathResolver.extractionOutputDirectory(projectId, standardType).toString());
             if (currentUser != null && !currentUser.isEmpty()) {
                 env.put("USERNAME_CONTEXT", currentUser);
             }

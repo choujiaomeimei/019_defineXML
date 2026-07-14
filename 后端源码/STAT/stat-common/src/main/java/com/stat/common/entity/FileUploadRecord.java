@@ -48,7 +48,7 @@ public class FileUploadRecord implements Serializable {
     private String username;
 
     /**
-     * 文件类别：P21_SPEC, XPT, PROJECT_SPEC, ACRF, VLM, CODELIST
+     * 文件类别：P21_SPEC, XPT, PROJECT_SPEC, ACRF, EDC_CODELIST, VLM, CODELIST
      */
     @TableField("file_category")
     private String fileCategory;
@@ -70,6 +70,18 @@ public class FileUploadRecord implements Serializable {
      */
     @TableField("file_path")
     private String filePath;
+
+    /**
+     * projects 下当前有效工作副本路径
+     */
+    @TableField("workspace_file_path")
+    private String workspaceFilePath;
+
+    /**
+     * 文件所属标准类型：SDTM、ADAM、SEND
+     */
+    @TableField("standard_type")
+    private String standardType;
 
     /**
      * 文件大小(字节)
@@ -168,6 +180,7 @@ public class FileUploadRecord implements Serializable {
         public static final String XPT = "XPT";
         public static final String PROJECT_SPEC = "PROJECT_SPEC";
         public static final String ACRF = "ACRF";
+        public static final String EDC_CODELIST = "EDC_CODELIST";
         public static final String VLM = "VLM";
         public static final String CODELIST = "CODELIST";
     }

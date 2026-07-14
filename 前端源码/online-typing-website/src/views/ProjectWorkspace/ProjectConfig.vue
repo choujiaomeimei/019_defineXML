@@ -1,13 +1,6 @@
 <template>
   <div class="config-page">
     <div class="config-container">
-      <div class="section-header">
-        <div class="section-title-group">
-          <h3>文件上传</h3>
-          <span class="section-desc">上传与管理项目所需文件</span>
-        </div>
-      </div>
-
       <!-- 未选择标准类型时的提示 -->
       <div v-if="!projectConfig.standardTypes || projectConfig.standardTypes.length === 0" class="empty-card">
         <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
@@ -27,7 +20,12 @@
             </div>
           </div>
           <div class="card-body">
-            <div class="upload-grid">
+            <div class="upload-sections">
+              <section class="upload-section">
+                <div class="upload-section-head">
+                  <h4 class="upload-section-title">单文件上传</h4>
+                </div>
+                <div class="upload-grid upload-grid--single">
               <!-- aCRF (单文件替换) -->
               <div class="upload-card">
                 <div class="upload-card-header">
@@ -39,6 +37,7 @@
                   <div class="file-meta">{{ formatFileSize(currentFiles.ACRF.fileSize) }} · {{ formatDateTime(currentFiles.ACRF.uploadTime) }}
                     <el-tag v-if="currentFiles.ACRF.processStatus === 'completed'" type="success" size="small" style="margin-left:6px">已处理</el-tag>
                     <el-tag v-else-if="currentFiles.ACRF.processStatus === 'failed'" type="danger" size="small" style="margin-left:6px">处理失败</el-tag>
+                    <el-tag v-if="currentFiles.ACRF.workspaceFilePath" type="info" size="small" style="margin-left:6px">工作区已同步</el-tag>
                   </div>
                   <div class="file-actions">
                     <el-button size="small" type="primary" text @click="triggerReplace('ACRF')" :disabled="!!processingCategory">替换文件</el-button>
@@ -60,7 +59,7 @@
                   accept=".pdf"
                   :limit="1"
                   :show-file-list="false"
-                  :data="{ projectId: currentProjectId, fileCategory: 'ACRF', username: currentUsername }"
+                  :data="{ projectId: currentProjectId, fileCategory: 'ACRF', standardType: uploadStandardType, username: currentUsername }"
                 >
                   <div class="upload-inner">
                     <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
@@ -85,6 +84,7 @@
                   <div class="file-meta">{{ formatFileSize(currentFiles.P21_SPEC.fileSize) }} · {{ formatDateTime(currentFiles.P21_SPEC.uploadTime) }}
                     <el-tag v-if="currentFiles.P21_SPEC.processStatus === 'completed'" type="success" size="small" style="margin-left:6px">已处理</el-tag>
                     <el-tag v-else-if="currentFiles.P21_SPEC.processStatus === 'failed'" type="danger" size="small" style="margin-left:6px">处理失败</el-tag>
+                    <el-tag v-if="currentFiles.P21_SPEC.workspaceFilePath" type="info" size="small" style="margin-left:6px">工作区已同步</el-tag>
                   </div>
                   <div class="file-actions">
                     <el-button size="small" type="primary" text @click="triggerReplace('P21_SPEC')" :disabled="!!processingCategory">替换文件</el-button>
@@ -105,7 +105,7 @@
                   accept=".xlsx,.xls"
                   :limit="1"
                   :show-file-list="false"
-                  :data="{ projectId: currentProjectId, fileCategory: 'P21_SPEC', username: currentUsername }"
+                  :data="{ projectId: currentProjectId, fileCategory: 'P21_SPEC', standardType: uploadStandardType, username: currentUsername }"
                 >
                   <div class="upload-inner">
                     <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
@@ -130,6 +130,7 @@
                   <div class="file-meta">{{ formatFileSize(currentFiles.PROJECT_SPEC.fileSize) }} · {{ formatDateTime(currentFiles.PROJECT_SPEC.uploadTime) }}
                     <el-tag v-if="currentFiles.PROJECT_SPEC.processStatus === 'completed'" type="success" size="small" style="margin-left:6px">已处理</el-tag>
                     <el-tag v-else-if="currentFiles.PROJECT_SPEC.processStatus === 'failed'" type="danger" size="small" style="margin-left:6px">处理失败</el-tag>
+                    <el-tag v-if="currentFiles.PROJECT_SPEC.workspaceFilePath" type="info" size="small" style="margin-left:6px">工作区已同步</el-tag>
                   </div>
                   <div class="file-actions">
                     <el-button size="small" type="primary" text @click="triggerReplace('PROJECT_SPEC')" :disabled="!!processingCategory">替换文件</el-button>
@@ -150,7 +151,7 @@
                   accept=".xlsx,.xls"
                   :limit="1"
                   :show-file-list="false"
-                  :data="{ projectId: currentProjectId, fileCategory: 'PROJECT_SPEC', username: currentUsername }"
+                  :data="{ projectId: currentProjectId, fileCategory: 'PROJECT_SPEC', standardType: uploadStandardType, username: currentUsername }"
                 >
                   <div class="upload-inner">
                     <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
@@ -172,7 +173,9 @@
                 </div>
                 <div v-if="currentFiles.EDC_CODELIST" class="current-file-info">
                   <div class="file-name">{{ currentFiles.EDC_CODELIST.originalName }}</div>
-                  <div class="file-meta">{{ formatFileSize(currentFiles.EDC_CODELIST.fileSize) }} · {{ formatDateTime(currentFiles.EDC_CODELIST.uploadTime) }}</div>
+                  <div class="file-meta">{{ formatFileSize(currentFiles.EDC_CODELIST.fileSize) }} · {{ formatDateTime(currentFiles.EDC_CODELIST.uploadTime) }}
+                    <el-tag v-if="currentFiles.EDC_CODELIST.workspaceFilePath" type="info" size="small" style="margin-left:6px">工作区已同步</el-tag>
+                  </div>
                   <div class="file-actions">
                     <el-button size="small" type="primary" text @click="triggerReplace('EDC_CODELIST')" :disabled="!!processingCategory">替换文件</el-button>
                     <el-button size="small" type="danger" text @click="handleDelete(currentFiles.EDC_CODELIST)" :disabled="!!processingCategory">删除</el-button>
@@ -190,7 +193,7 @@
                   accept=".xlsx,.xls"
                   :limit="1"
                   :show-file-list="false"
-                  :data="{ projectId: currentProjectId, fileCategory: 'EDC_CODELIST', username: currentUsername }"
+                  :data="{ projectId: currentProjectId, fileCategory: 'EDC_CODELIST', standardType: uploadStandardType, username: currentUsername }"
                 >
                   <div class="upload-inner">
                     <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
@@ -203,19 +206,23 @@
                 </el-upload>
                 <input ref="edcReplaceInput" type="file" accept=".xlsx,.xls" class="visually-hidden" @change="handleReplaceFile($event, 'EDC_CODELIST')">
               </div>
+                </div>
+              </section>
 
-              <!-- XPT (多文件模式，折叠表格) -->
-              <div class="upload-card upload-card--xpt">
-                <div class="upload-card-header">
-                  <span class="upload-label">XPT 文件</span>
+              <section class="upload-section upload-section--xpt">
+                <div class="upload-section-head upload-section-head--xpt">
+                  <div class="upload-section-head-text">
+                    <h4 class="upload-section-title">XPT 数据集</h4>
+                  </div>
                   <div class="xpt-header-actions">
                     <el-tag v-if="xptFiles.length > 0" type="success" size="small" round>{{ xptFiles.length }} 个文件</el-tag>
                     <el-tag v-if="processingCategory === 'XPT'" type="warning" size="small" round>处理中...</el-tag>
                     <el-button v-if="xptFiles.length > 0" size="small" type="danger" text @click="handleDeleteAllXpt">全部删除</el-button>
                   </div>
                 </div>
+
                 <el-upload
-                  class="saas-upload"
+                  class="saas-upload saas-upload--xpt"
                   drag
                   :action="getUploadUrl('XPT')"
                   :before-upload="beforeXptUpload"
@@ -225,45 +232,59 @@
                   accept=".xpt"
                   :limit="50"
                   :show-file-list="false"
-                  :data="{ projectId: currentProjectId, fileCategory: 'XPT', username: currentUsername }"
+                  :data="{ projectId: currentProjectId, fileCategory: 'XPT', standardType: uploadStandardType, username: currentUsername }"
                   multiple
                 >
-                  <div class="upload-inner">
+                  <div class="upload-inner upload-inner--xpt">
                     <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
                       <path d="M14 18V7M14 7L9 12M14 7L19 12" stroke="var(--saas-primary-light)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                       <path d="M5 18V21C5 22.1 5.9 23 7 23H21C22.1 23 23 22.1 23 21V18" stroke="var(--saas-primary-light)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
-                    <span class="upload-text">拖拽文件或 <em>点击上传</em></span>
-                    <span class="upload-hint">XPT 格式，支持多文件</span>
+                    <span class="upload-text">拖拽 XPT 文件到此处，或 <em>点击选择多个文件</em></span>
+                    <span class="upload-hint">单文件不超过 100MB，最多 50 个</span>
                   </div>
                 </el-upload>
-                <div v-if="xptFiles.length > 0" class="xpt-table-section">
-                  <div class="xpt-table-toggle" @click="xptExpanded = !xptExpanded">
+
+                <div v-if="xptFiles.length > 0" class="xpt-file-list">
+                  <div class="xpt-list-toolbar" @click="xptExpanded = !xptExpanded">
                     <span class="toggle-icon">{{ xptExpanded ? '▼' : '▶' }}</span>
-                    <span>已上传文件 ({{ xptFiles.length }})</span>
+                    <span class="xpt-list-label">已上传 {{ xptFiles.length }} 个文件</span>
                     <span v-if="!xptExpanded && xptFiles.length > xptDisplayLimit" class="toggle-hint">
-                      显示前 {{ xptDisplayLimit }} 条，还有 {{ xptFiles.length - xptDisplayLimit }} 条
+                      显示前 {{ xptDisplayLimit }} 条
                     </span>
-                    <span class="toggle-action">{{ xptExpanded ? '收起' : '展开' }}</span>
+                    <span class="toggle-action">{{ xptExpanded ? '收起' : '展开全部' }}</span>
                   </div>
-                  <div class="xpt-table-wrapper" :class="{ 'xpt-table-wrapper--expanded': xptExpanded }">
-                    <el-table :data="displayedXptFiles" size="small" :show-header="true" :border="false" class="xpt-compact-table">
-                      <el-table-column prop="originalName" label="文件名" min-width="160" show-overflow-tooltip />
-                      <el-table-column prop="fileSize" label="大小" width="100" align="center">
-                        <template #default="{ row }">{{ formatFileSize(row.fileSize) }}</template>
-                      </el-table-column>
-                      <el-table-column label="操作" width="70" align="center">
-                        <template #default="{ row }">
-                          <el-button size="small" type="danger" text @click="handleDelete(row)">删除</el-button>
-                        </template>
-                      </el-table-column>
-                    </el-table>
-                    <div v-if="!xptExpanded && xptFiles.length > xptDisplayLimit" class="xpt-show-more" @click="xptExpanded = true">
-                      查看全部 {{ xptFiles.length }} 个文件
-                    </div>
+                  <el-table
+                    :data="displayedXptFiles"
+                    size="small"
+                    :show-header="true"
+                    :border="false"
+                    class="xpt-compact-table"
+                    :class="{ 'xpt-compact-table--expanded': xptExpanded }"
+                  >
+                    <el-table-column prop="originalName" label="文件名" min-width="200" show-overflow-tooltip />
+                    <el-table-column prop="fileSize" label="大小" width="100" align="center">
+                      <template #default="{ row }">{{ formatFileSize(row.fileSize) }}</template>
+                    </el-table-column>
+                    <el-table-column label="工作区" width="90" align="center">
+                      <template #default="{ row }">
+                        <el-tag :type="row.workspaceFilePath ? 'success' : 'danger'" size="small">
+                          {{ row.workspaceFilePath ? '已同步' : '未同步' }}
+                        </el-tag>
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="操作" width="70" align="center">
+                      <template #default="{ row }">
+                        <el-button size="small" type="danger" text @click="handleDelete(row)">删除</el-button>
+                      </template>
+                    </el-table-column>
+                  </el-table>
+                  <div v-if="!xptExpanded && xptFiles.length > xptDisplayLimit" class="xpt-show-more" @click="xptExpanded = true">
+                    查看全部 {{ xptFiles.length }} 个文件
                   </div>
                 </div>
-              </div>
+                <div v-else class="xpt-empty-hint">上传后文件将显示在下方列表中</div>
+              </section>
             </div>
           </div>
         </div>
@@ -282,6 +303,7 @@ import {
 } from '@/api'
 import service from '@/axios'
 import { formatFileSize, formatDateTime } from '@/utils/format'
+import { queueBatchMessage, showToast } from '@/utils/batchMessage'
 
 const route = useRoute()
 const saving = ref(false)
@@ -292,6 +314,9 @@ const currentUsername = computed(() => {
   const user = localStorage.getItem('user')
   return user ? JSON.parse(user).username : 'system'
 })
+const uploadStandardType = computed(() =>
+  projectConfig.value.standardType || projectConfig.value.standardTypes?.[0] || 'SDTM'
+)
 
 const projectConfig = ref({
   projectId: '', encoding: 'UTF-8', language: 'CN',
@@ -333,44 +358,34 @@ const edcReplaceInput = ref(null)
 const getUploadUrl = (category) => `${baseUrl}/files/upload`
 
 const beforeAcrfUpload = (file) => {
-  if (!file.name.toLowerCase().endsWith('.pdf')) { ElMessage.error('只能上传PDF格式文件!'); return false }
-  if (file.size / 1024 / 1024 >= 100) { ElMessage.error('文件大小不能超过 100MB!'); return false }
+  if (!file.name.toLowerCase().endsWith('.pdf')) { showToast('error', '只能上传PDF格式文件!'); return false }
+  if (file.size / 1024 / 1024 >= 100) { showToast('error', '文件大小不能超过 100MB!'); return false }
   return true
 }
 const beforeSpecUpload = (file) => {
-  if (!file.name.toLowerCase().endsWith('.xlsx') && !file.name.toLowerCase().endsWith('.xls')) { ElMessage.error('只能上传Excel格式文件!'); return false }
-  if (file.size / 1024 / 1024 >= 50) { ElMessage.error('文件大小不能超过 50MB!'); return false }
+  if (!file.name.toLowerCase().endsWith('.xlsx') && !file.name.toLowerCase().endsWith('.xls')) { showToast('error', '只能上传Excel格式文件!'); return false }
+  if (file.size / 1024 / 1024 >= 50) { showToast('error', '文件大小不能超过 50MB!'); return false }
   return true
 }
 const beforeXptUpload = (file) => {
-  if (!file.name.toLowerCase().endsWith('.xpt')) { ElMessage.error('只能上传XPT格式文件!'); return false }
-  if (file.size / 1024 / 1024 >= 100) { ElMessage.error('文件大小不能超过 100MB!'); return false }
+  if (!file.name.toLowerCase().endsWith('.xpt')) { showToast('error', '只能上传XPT格式文件!'); return false }
+  if (file.size / 1024 / 1024 >= 100) { showToast('error', '文件大小不能超过 100MB!'); return false }
   return true
 }
-
-let _uploadMsgTimer = null
-let _uploadPendingCount = 0
 
 const handleUploadSuccess = async (response) => {
   if (response && response.success) {
     const fileCategory = response.data?.fileCategory
     const fileId = response.data?.fileId
 
-    _uploadPendingCount++
-    if (_uploadMsgTimer) clearTimeout(_uploadMsgTimer)
-    _uploadMsgTimer = setTimeout(() => {
-      const n = _uploadPendingCount
-      ElMessage.success(n > 1 ? `${n} 个文件上传成功，正在自动处理...` : '文件上传成功，正在自动处理...')
-      _uploadPendingCount = 0
-      _uploadMsgTimer = null
-    }, 300)
+    queueBatchMessage('upload', { success: true })
 
     await loadProjectFiles()
     if (fileCategory && fileId) {
       await autoProcess({ fileId, fileCategory }, fileCategory)
     }
   } else {
-    ElMessage.error(response?.message || '上传失败')
+    showToast('error', response?.message || '上传失败')
   }
 }
 
@@ -382,20 +397,19 @@ const autoProcess = async (fileInfo, category) => {
     })
     const result = res.data
     if (result.success) {
-      ElMessage.success('文件处理完成')
+      queueBatchMessage('process', { success: true })
     } else {
-      ElMessage.warning(`自动处理失败：${result.message || '未知错误'}，可手动重新处理`)
+      queueBatchMessage('process', { fail: true })
     }
     await loadProjectFiles()
   } catch (error) {
-    const msg = error.response?.data?.message || error.message
-    ElMessage.warning(`自动处理失败：${msg}，可手动重新处理`)
+    queueBatchMessage('process', { fail: true })
     await loadProjectFiles()
   } finally {
     processingCategory.value = null
   }
 }
-const handleUploadError = (error, file) => ElMessage.error(`${file.name} 上传失败!`)
+const handleUploadError = (error, file) => showToast('error', `${file.name} 上传失败!`)
 
 const triggerReplace = (category) => {
   const inputMap = { ACRF: acrfReplaceInput, P21_SPEC: p21ReplaceInput, PROJECT_SPEC: specReplaceInput, EDC_CODELIST: edcReplaceInput }
@@ -412,6 +426,7 @@ const handleReplaceFile = async (event, category) => {
   formData.append('file', file)
   formData.append('projectId', currentProjectId.value)
   formData.append('fileCategory', category)
+  formData.append('standardType', uploadStandardType.value)
   formData.append('username', currentUsername.value)
 
   try {
@@ -420,16 +435,16 @@ const handleReplaceFile = async (event, category) => {
     })
     if (res.data.success) {
       const fileId = res.data.data?.fileId
-      ElMessage.success('文件替换成功，正在自动处理...')
+      showToast('success', '文件替换成功，正在自动处理...')
       await loadProjectFiles()
       if (fileId) {
         await autoProcess({ fileId, fileCategory: category }, category)
       }
     } else {
-      ElMessage.error(res.data.message || '替换失败')
+      showToast('error', res.data.message || '替换失败')
     }
   } catch (e) {
-    ElMessage.error('替换失败: ' + (e.message || ''))
+    showToast('error', '替换失败: ' + (e.message || ''))
   }
 }
 
@@ -437,9 +452,9 @@ const handleDelete = async (file) => {
   try {
     await ElMessageBox.confirm(`确定要删除文件 "${file.originalName}" 吗？`, '确认删除', { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' })
     const res = await ApiDeleteProjectFile(file.fileId)
-    if (res.data.success) { ElMessage.success('文件删除成功'); await loadProjectFiles() }
-    else ElMessage.error(res.data.message || '删除失败')
-  } catch (error) { if (error !== 'cancel') ElMessage.error('删除失败') }
+    if (res.data.success) { showToast('success', '文件删除成功'); await loadProjectFiles() }
+    else showToast('error', res.data.message || '删除失败')
+  } catch (error) { if (error !== 'cancel') showToast('error', '删除失败') }
 }
 
 const processFile = async (file, type) => {
@@ -447,14 +462,14 @@ const processFile = async (file, type) => {
   const category = categoryMap[type]
   processingCategory.value = category
   try {
-    ElMessage.info('开始处理文件...')
+    showToast('info', '开始处理文件...')
     const res = await service.post(`${baseUrl}/files/process`, { fileId: file.fileId })
     const result = res.data
-    if (result.success) { ElMessage.success('文件处理成功'); await loadProjectFiles() }
-    else ElMessage.error(result.message || '处理失败')
+    if (result.success) { showToast('success', '文件处理成功'); await loadProjectFiles() }
+    else showToast('error', result.message || '处理失败')
   } catch (error) {
     const msg = error.response?.data?.message || error.message
-    ElMessage.error('处理失败: ' + msg)
+    showToast('error', '处理失败: ' + msg)
   }
   finally { processingCategory.value = null }
 }
@@ -483,7 +498,7 @@ const downloadProcessResult = (file) => {
       link.click()
       window.URL.revokeObjectURL(blobUrl)
     }).catch(() => {
-      ElMessage.error('下载失败')
+      showToast('error', '下载失败')
     })
   } else {
     link.href = url
@@ -509,14 +524,14 @@ const handleDeleteAllXpt = async () => {
       } catch { failCount++ }
     }
     if (failCount === 0) {
-      ElMessage.success(`已删除全部 ${successCount} 个文件`)
+      showToast('success', `已删除全部 ${successCount} 个文件`)
     } else {
-      ElMessage.warning(`成功删除 ${successCount} 个，失败 ${failCount} 个`)
+      showToast('warning', `成功删除 ${successCount} 个，失败 ${failCount} 个`)
     }
     await loadProjectFiles()
     xptExpanded.value = false
   } catch (error) {
-    if (error !== 'cancel') ElMessage.error('批量删除失败')
+    if (error !== 'cancel') showToast('error', '批量删除失败')
   }
 }
 
@@ -672,134 +687,224 @@ onMounted(() => { if (currentProjectId.value) Promise.all([loadProjectConfig(), 
   p { margin-top: 12px; color: var(--saas-text-secondary); font-size: 14px; }
 }
 
+.upload-sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--saas-space-6);
+}
+
+.upload-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--saas-space-4);
+}
+
+.upload-section-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  &--xpt {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--saas-space-4);
+  }
+}
+
+.upload-section-head-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.upload-section-title {
+  margin: 0;
+  font-size: var(--saas-text-base);
+  font-weight: var(--saas-font-semibold);
+  color: var(--saas-text-primary);
+}
+
 .upload-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px;
+  display: grid;
+  gap: var(--saas-space-4);
+
+  &--single {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 
   .upload-card {
-    border: 1px solid var(--saas-border); border-radius: var(--saas-radius-md);
-    padding: 16px; background: var(--saas-bg-page);
+    border: 1px solid var(--saas-border);
+    border-radius: var(--saas-radius-md);
+    padding: var(--saas-space-4);
+    background: var(--saas-bg-card);
+    min-height: 168px;
+    display: flex;
+    flex-direction: column;
 
     .upload-card-header {
-      display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;
-      .upload-label { font-size: 13px; font-weight: 600; color: var(--saas-text-primary); }
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--saas-space-3);
+      .upload-label { font-size: var(--saas-text-sm); font-weight: var(--saas-font-semibold); color: var(--saas-text-primary); }
     }
 
     .saas-upload {
-      :deep(.el-upload) { width: 100%; }
+      flex: 1;
+      :deep(.el-upload) { width: 100%; height: 100%; }
       :deep(.el-upload-dragger) {
-        border: 1.5px dashed var(--saas-border); border-radius: var(--saas-radius-md);
-        background: var(--saas-bg-card); padding: 16px; transition: all var(--saas-transition);
+        border: 1.5px dashed var(--saas-border);
+        border-radius: var(--saas-radius-md);
+        background: var(--saas-bg-page);
+        padding: var(--saas-space-4);
+        height: 100%;
+        min-height: 96px;
+        transition: all var(--saas-transition);
         &:hover { border-color: var(--saas-primary-lighter); background: var(--saas-primary-bg); }
       }
     }
 
     .upload-inner {
-      display: flex; flex-direction: column; align-items: center; gap: 6px;
-      .upload-text { font-size: 13px; color: var(--saas-text-secondary); em { color: var(--saas-primary); font-style: normal; font-weight: 500; } }
-      .upload-hint { font-size: 11px; color: var(--saas-text-tertiary); }
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+      .upload-text { font-size: var(--saas-text-sm); color: var(--saas-text-secondary); em { color: var(--saas-primary); font-style: normal; font-weight: var(--saas-font-medium); } }
+      .upload-hint { font-size: var(--saas-text-xs); color: var(--saas-text-tertiary); }
     }
   }
 }
 
-.current-file-info {
-  background: var(--saas-bg-card); border: 1px solid var(--saas-border-light);
-  border-radius: var(--saas-radius-md); padding: 12px;
-
-  .file-name {
-    font-size: 13px; font-weight: 600; color: var(--saas-text-primary);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+@media (min-width: 1200px) {
+  .upload-grid--single {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
-  .file-meta { font-size: 11px; color: var(--saas-text-tertiary); margin-top: 4px; }
-  .file-actions { margin-top: 8px; display: flex; gap: 4px; }
 }
 
-.upload-card--xpt {
-  grid-column: 1 / -1;
+.upload-section--xpt {
+  padding-top: var(--saas-space-2);
+  border-top: 1px solid var(--saas-border-light);
+}
+
+.saas-upload--xpt {
+  :deep(.el-upload) { width: 100%; }
+  :deep(.el-upload-dragger) {
+    border: 1.5px dashed var(--saas-border);
+    border-radius: var(--saas-radius-md);
+    background: var(--saas-bg-page);
+    padding: var(--saas-space-5) var(--saas-space-6);
+    transition: all var(--saas-transition);
+    &:hover { border-color: var(--saas-primary-lighter); background: var(--saas-primary-bg); }
+  }
+}
+
+.upload-inner--xpt {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: var(--saas-space-3);
+  flex-wrap: wrap;
+
+  svg { flex-shrink: 0; }
+  .upload-text { font-size: var(--saas-text-sm); color: var(--saas-text-secondary); }
+  .upload-hint { font-size: var(--saas-text-xs); color: var(--saas-text-tertiary); width: 100%; text-align: center; }
+}
+
+.current-file-info {
+  flex: 1;
+  background: var(--saas-bg-page);
+  border: 1px solid var(--saas-border-light);
+  border-radius: var(--saas-radius-md);
+  padding: var(--saas-space-3);
+
+  .file-name {
+    font-size: var(--saas-text-sm);
+    font-weight: var(--saas-font-semibold);
+    color: var(--saas-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .file-meta { font-size: var(--saas-text-xs); color: var(--saas-text-tertiary); margin-top: 4px; }
+  .file-actions { margin-top: var(--saas-space-2); display: flex; flex-wrap: wrap; gap: 4px; }
 }
 
 .xpt-header-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--saas-space-2);
+  flex-shrink: 0;
 }
 
-.xpt-table-section {
-  margin-top: 12px;
-  border-top: 1px dashed var(--saas-border);
-  padding-top: 8px;
+.xpt-file-list {
+  border: 1px solid var(--saas-border-light);
+  border-radius: var(--saas-radius-md);
+  background: var(--saas-bg-card);
+  overflow: hidden;
 }
 
-.xpt-table-toggle {
+.xpt-list-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  font-size: 12px;
+  gap: var(--saas-space-2);
+  padding: var(--saas-space-2) var(--saas-space-3);
+  font-size: var(--saas-text-xs);
   color: var(--saas-text-secondary);
   cursor: pointer;
   user-select: none;
-  border-radius: var(--saas-radius-sm);
+  background: var(--saas-bg-input);
+  border-bottom: 1px solid var(--saas-border-light);
   transition: background var(--saas-transition);
 
-  &:hover {
-    background: var(--saas-bg-input);
-  }
+  &:hover { background: var(--saas-bg-hover); }
 
   .toggle-icon {
     font-size: 10px;
     width: 14px;
     text-align: center;
-    transition: transform 0.2s;
   }
 
-  .toggle-hint {
-    color: var(--saas-text-tertiary);
-    font-size: 11px;
-  }
-
+  .xpt-list-label { font-weight: var(--saas-font-medium); color: var(--saas-text-primary); }
+  .toggle-hint { color: var(--saas-text-tertiary); }
   .toggle-action {
     margin-left: auto;
     color: var(--saas-primary);
-    font-size: 11px;
-    font-weight: 500;
+    font-weight: var(--saas-font-medium);
   }
 }
 
-.xpt-table-wrapper {
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height 0.3s ease;
-
-  &--expanded {
-    max-height: 400px;
-    overflow-y: auto;
-  }
-}
-
-.xpt-table-wrapper:not(.xpt-table-wrapper--expanded) {
-  max-height: 220px;
-  overflow: hidden;
+.xpt-empty-hint {
+  font-size: var(--saas-text-xs);
+  color: var(--saas-text-tertiary);
+  text-align: center;
+  padding: var(--saas-space-3);
 }
 
 .xpt-compact-table {
+  :deep(.el-table__inner-wrapper::before) { display: none; }
   :deep(.el-table__header th) {
-    font-size: 11px;
-    padding: 4px 0;
-    background: var(--saas-bg-input);
+    font-size: var(--saas-text-xs);
+    padding: 6px 0;
+    background: var(--saas-bg-card);
+    color: var(--saas-text-secondary);
   }
   :deep(.el-table__body td) {
-    font-size: 12px;
-    padding: 3px 0;
+    font-size: var(--saas-text-sm);
+    padding: 4px 0;
   }
-  :deep(.el-table__row) {
-    height: 32px;
+  :deep(.el-table__row) { height: 36px; }
+
+  &--expanded {
+    :deep(.el-table__body-wrapper) {
+      max-height: 360px;
+      overflow-y: auto;
+    }
   }
 }
 
 .xpt-show-more {
   text-align: center;
-  padding: 6px 0;
-  font-size: 12px;
+  padding: var(--saas-space-2) 0;
+  font-size: var(--saas-text-xs);
   color: var(--saas-primary);
   cursor: pointer;
   border-top: 1px dashed var(--saas-border-light);

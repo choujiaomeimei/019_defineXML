@@ -1,28 +1,40 @@
 <template>
   <div class="dictionaries-edit-page">
-    <div class="page-toolbar">
-      <div class="toolbar-left">
-        <h3 class="page-title">Dictionaries</h3>
-        <span class="page-desc">外部字典引用 (External Dictionaries)</span>
-      </div>
-      <div class="toolbar-right">
-        <el-button type="primary" size="small" @click="showAddDialog">
-          <el-icon><Plus /></el-icon> 新增
-        </el-button>
-        <el-button size="small" @click="refreshData">
-          <el-icon><Refresh /></el-icon> 刷新
-        </el-button>
-      </div>
-    </div>
-
-    <div class="table-content">
+    <div class="table-mode">
+      <div class="table-layout ws-flat-table">
+        <div class="ws-flat-head">
+          <div class="sidebar-search">
+            <el-input
+              v-model="searchKeyword"
+              placeholder="搜索 Dictionary..."
+              size="small"
+              clearable
+              prefix-icon="Search"
+            />
+          </div>
+          <div class="table-actions ws-toolbar-zones">
+            <div class="ws-toolbar-zone ws-toolbar-zone--start">
+              <div class="ws-btn-group">
+                <el-button type="primary" size="small" @click="showAddDialog">
+                  <el-icon><Plus /></el-icon> 新增
+                </el-button>
+                <el-button size="small" @click="refreshData">
+                  <el-icon><Refresh /></el-icon> 刷新
+                </el-button>
+              </div>
+            </div>
+            <div class="ws-toolbar-zone ws-toolbar-zone--center"></div>
+            <div class="ws-toolbar-zone ws-toolbar-zone--end"></div>
+          </div>
+        </div>
+        <div class="table-body">
       <el-table
-        :data="tableData"
+        :data="filteredData"
         v-loading="tableLoading"
         border
         stripe
         size="small"
-        max-height="calc(100vh - 200px)"
+        max-height="calc(100vh - 260px)"
         @cell-dblclick="handleCellDblClick"
       >
         <el-table-column prop="dictionaryId" label="ID" width="200">
@@ -77,6 +89,8 @@
           </template>
         </el-table-column>
       </el-table>
+        </div>
+      </div>
     </div>
 
     <el-dialog v-model="addDialogVisible" title="新增Dictionary" width="600px" destroy-on-close>
@@ -109,6 +123,16 @@ const currentProjectId = computed(() => props.projectId || route.params.projectI
 
 const tableData = ref([])
 const tableLoading = ref(false)
+const searchKeyword = ref('')
+
+const filteredData = computed(() => {
+  if (!searchKeyword.value) return tableData.value
+  const kw = searchKeyword.value.toLowerCase()
+  return tableData.value.filter(r =>
+    [r.dictionaryId, r.name, r.dataType, r.dictionary, r.version]
+      .some(v => v && String(v).toLowerCase().includes(kw))
+  )
+})
 
 const editingRowId = ref(null)
 const editingField = ref(null)
@@ -224,44 +248,5 @@ onMounted(() => {
   flex-direction: column;
   height: calc(100vh - var(--saas-topbar-height, 56px));
   background: var(--saas-bg-page, #f5f6fa);
-}
-
-.page-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 24px;
-  background: var(--saas-bg-card, #fff);
-  border-bottom: 1px solid var(--saas-border-light, #e5e7eb);
-
-  .toolbar-left {
-    display: flex;
-    align-items: baseline;
-    gap: 12px;
-  }
-
-  .page-title {
-    font-size: 18px;
-    font-weight: 600;
-    margin: 0;
-    color: var(--saas-text-primary, #1f2937);
-  }
-
-  .page-desc {
-    font-size: 13px;
-    color: var(--saas-text-tertiary, #9ca3af);
-  }
-
-  .toolbar-right {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-}
-
-.table-content {
-  flex: 1;
-  padding: 16px;
-  overflow: auto;
 }
 </style>

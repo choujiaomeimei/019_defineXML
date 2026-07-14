@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS `file_version_history` (
     `file_id` VARCHAR(100) NOT NULL,
     `project_id` VARCHAR(50) NOT NULL,
     `username` VARCHAR(100),
-    `file_category` ENUM('P21_SPEC','XPT','PROJECT_SPEC','ACRF','VLM','CODELIST') NOT NULL,
+    `file_category` ENUM('P21_SPEC','XPT','PROJECT_SPEC','ACRF','EDC_CODELIST','VLM','CODELIST') NOT NULL,
     `version_number` INT NOT NULL,
     `original_name` VARCHAR(255) NOT NULL,
     `server_file_name` VARCHAR(255) NOT NULL,
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS `project_snapshot` (
 CREATE TABLE IF NOT EXISTS `snapshot_files` (
     `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
     `snapshot_id` BIGINT NOT NULL,
-    `file_category` ENUM('P21_SPEC','XPT','PROJECT_SPEC','ACRF','VLM','CODELIST') NOT NULL,
+    `file_category` ENUM('P21_SPEC','XPT','PROJECT_SPEC','ACRF','EDC_CODELIST','VLM','CODELIST') NOT NULL,
     `original_name` VARCHAR(255),
     `file_path` VARCHAR(500) NOT NULL,
     `file_size` BIGINT,

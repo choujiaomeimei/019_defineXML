@@ -1,55 +1,6 @@
 <template>
   <template v-if="!isAuthPage">
     <div class="saas-layout">
-      <!-- 一级侧边栏（图标模式） -->
-      <aside class="saas-sidebar">
-        <div class="sidebar-brand" title="Define.XML">
-          <div class="brand-icon">
-            <svg width="24" height="24" viewBox="0 0 28 28" fill="none">
-              <rect width="28" height="28" rx="8" fill="white" fill-opacity="0.15"/>
-              <path d="M8 10h12M8 14h8M8 18h10" stroke="white" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-          </div>
-        </div>
-
-        <nav class="sidebar-nav">
-          <div
-            class="nav-item"
-            :class="{ active: isProjectListActive }"
-            @click="navigateTo('/ProjectList')"
-            title="项目列表"
-          >
-            <div class="nav-icon">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <rect x="2" y="2" width="7" height="7" rx="2" stroke="currentColor" stroke-width="1.5"/>
-                <rect x="11" y="2" width="7" height="7" rx="2" stroke="currentColor" stroke-width="1.5"/>
-                <rect x="2" y="11" width="7" height="7" rx="2" stroke="currentColor" stroke-width="1.5"/>
-                <rect x="11" y="11" width="7" height="7" rx="2" stroke="currentColor" stroke-width="1.5"/>
-              </svg>
-            </div>
-          </div>
-
-          <div class="nav-divider"></div>
-          <div class="nav-section-label">处理规则</div>
-
-          <div class="nav-item" :class="{ active: activeRuleTab === 'datasets' }" @click="showRule('datasets')" title="Datasets 处理规则">
-            <div class="nav-icon"><span class="nav-letter">D</span></div>
-          </div>
-          <div class="nav-item" :class="{ active: activeRuleTab === 'variables' }" @click="showRule('variables')" title="Variables 映射规则">
-            <div class="nav-icon"><span class="nav-letter">S</span></div>
-          </div>
-          <div class="nav-item" :class="{ active: activeRuleTab === 'vlm' }" @click="showRule('vlm')" title="ValueLevel 生成规则">
-            <div class="nav-icon"><span class="nav-letter">V</span></div>
-          </div>
-          <div class="nav-item" :class="{ active: activeRuleTab === 'codelist' }" @click="showRule('codelist')" title="Codelists 处理规则">
-            <div class="nav-icon"><span class="nav-letter">C</span></div>
-          </div>
-          <div class="nav-item" :class="{ active: activeRuleTab === 'pages' }" @click="showRule('pages')" title="Pages 处理规则">
-            <div class="nav-icon"><span class="nav-letter">P</span></div>
-          </div>
-        </nav>
-      </aside>
-
       <!-- 主区域 -->
       <div class="saas-main">
         <!-- 顶栏 -->
@@ -91,6 +42,41 @@
           <router-view></router-view>
         </main>
       </div>
+
+      <!-- 右侧处理规则快捷栏 -->
+      <aside class="saas-rules-rail" aria-label="处理规则">
+        <div class="rules-rail-header" title="字段来源参考">规则</div>
+        <nav class="rules-rail-nav">
+          <button
+            v-for="key in ruleModuleKeys"
+            :key="key"
+            type="button"
+            class="nav-item"
+            :class="{ active: activeRuleTab === key }"
+            @click="showRule(key)"
+            :title="ruleModules[key].tooltip"
+            :aria-label="ruleModules[key].tooltip"
+            :aria-pressed="activeRuleTab === key && showRuleDrawer"
+          >
+            <div class="nav-icon">
+              <span class="nav-letter">{{ ruleModules[key].letter }}</span>
+            </div>
+          </button>
+          <button
+            type="button"
+            class="nav-item nav-guide"
+            :class="{ active: showGuideDrawer }"
+            title="使用说明"
+            aria-label="打开使用说明"
+            :aria-pressed="showGuideDrawer"
+            @click="showGuide"
+          >
+            <div class="nav-icon">
+              <span class="nav-letter" aria-hidden="true">?</span>
+            </div>
+          </button>
+        </nav>
+      </aside>
     </div>
 
     <!-- 用户信息对话框 -->
@@ -119,10 +105,16 @@
       </template>
     </el-dialog>
 
-    <!-- 处理规则对话框 -->
-    <el-dialog v-model="showRuleDialog" :title="ruleDialogTitle" width="720px" class="saas-dialog rule-dialog" top="5vh" destroy-on-close>
-      <div class="rule-content" v-html="currentRuleHtml"></div>
-    </el-dialog>
+    <!-- 处理规则侧滑面板 -->
+    <ProcessingRulesDrawer
+      :visible="showRuleDrawer"
+      :module-key="activeRuleTab"
+      @update:visible="handleRuleDrawerClose"
+    />
+    <UserGuideDrawer
+      v-model:visible="showGuideDrawer"
+      :route-name="String(route.name || '')"
+    />
   </template>
 
   <template v-else>
@@ -132,8 +124,14 @@
 
 <script setup>
 import { useRouter, useRoute } from 'vue-router'
-import { ref, watch, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
+import ProcessingRulesDrawer from '@/components/ProcessingRulesDrawer.vue'
+import UserGuideDrawer from '@/components/UserGuideDrawer.vue'
+import { RULE_MODULES, RULE_MODULE_KEYS } from '@/data/processingRules'
+
+const ruleModules = RULE_MODULES
+const ruleModuleKeys = RULE_MODULE_KEYS
 
 const router = useRouter()
 const route = useRoute()
@@ -154,14 +152,6 @@ const isAuthPage = computed(() => {
   return route.path === '/login' || route.path === '/register'
 })
 
-const isProjectListActive = computed(() => {
-  return route.path === '/' || route.path === '/ProjectList'
-})
-
-const navigateTo = (path) => {
-  router.push({ path })
-}
-
 const logout = async () => {
   try {
     await ElMessageBox.confirm('确定要退出登录吗？', '退出确认', {
@@ -178,198 +168,37 @@ const logout = async () => {
 }
 
 const showUserInfoDialog = ref(false)
-const showRuleDialog = ref(false)
+const showRuleDrawer = ref(false)
+const showGuideDrawer = ref(false)
 const activeRuleTab = ref('')
 
-const ruleDialogTitle = computed(() => {
-  const titles = { datasets: 'Datasets 处理规则', variables: 'Variables 映射规则', vlm: 'ValueLevel 生成规则', codelist: 'Codelists 处理规则', pages: 'Pages 处理规则' }
-  return titles[activeRuleTab.value] || '处理规则'
-})
-
-const datasetsRuleHtml = `
-<h4>1. 数据来源</h4>
-<p>Datasets 数据提取自上传的原始 Spec 的 <code>TOC</code> 工作表。TOC 表中的每一行代表一个数据集。</p>
-
-<h4>2. 字段映射规则</h4>
-<table class="rule-table">
-  <thead><tr><th>P21 字段</th><th>TOC 列来源</th><th>说明</th></tr></thead>
-  <tbody>
-    <tr><td><b>Dataset</b></td><td>Dataset / Domain</td><td>数据集名称（如 DM, AE, LB），必填</td></tr>
-    <tr><td><b>Label</b></td><td>Description / Label</td><td>数据集描述</td></tr>
-    <tr><td><b>Class</b></td><td>Class / Observation Class</td><td>如 Events, Findings, Interventions, Special Purpose 等</td></tr>
-    <tr><td><b>SubClass</b></td><td>SubClass</td><td>子分类，可选</td></tr>
-    <tr><td><b>Structure</b></td><td>Structure</td><td>数据结构，如 "One record per subject" 等</td></tr>
-    <tr><td><b>Key Variables</b></td><td>Key Variables / Keys</td><td>关键变量列表，逗号分隔</td></tr>
-    <tr><td><b>Standard</b></td><td>Standard</td><td>标准名称，如 SDTM-IG 3.4</td></tr>
-    <tr><td><b>Has No Data</b></td><td>Has No Data</td><td>是否无数据（Yes/No），默认空</td></tr>
-    <tr><td><b>Repeating</b></td><td>Repeating</td><td>是否可重复（Yes/No），默认空</td></tr>
-    <tr><td><b>Reference Data</b></td><td>Reference Data</td><td>是否为参考数据（Yes/No），默认空</td></tr>
-    <tr><td><b>Comment</b></td><td>Comment / Comments</td><td>备注说明</td></tr>
-    <tr><td><b>Developer Notes</b></td><td>Developer Notes</td><td>开发备注，可选</td></tr>
-  </tbody>
-</table>
-
-<h4>3. 数据存储</h4>
-<p>结果存入 <code>sas_datasets_data</code> 表（按用户隔离），用户可在 Datasets 页面的表格模式或 Excel 模式中编辑。</p>
-`
-
-const variablesRuleHtml = `
-<h4>1. 上传与解析</h4>
-<p>上传项目 Spec（Excel），系统自动识别工作表名为 2-4 个大写字母的 Domain Sheet（如 DM、AE、LB），跳过 TOC 等非域名 Sheet。匹配到 3 个及以上标准字段的 Sheet 才会被解析。</p>
-
-<h4>2. Spec → P21 Variables 映射</h4>
-<p>原始 Spec 字段经过处理后映射到 P21 标准的 Variables 字段：</p>
-<table class="rule-table">
-  <thead><tr><th>P21 Variables</th><th>Spec 来源</th><th>映射规则</th></tr></thead>
-  <tbody>
-    <tr><td><b>Order</b></td><td>Seq</td><td>自动编号</td></tr>
-    <tr><td><b>Dataset</b></td><td>Domain</td><td>直接映射</td></tr>
-    <tr><td><b>Variable</b></td><td>Variable Name</td><td>直接映射</td></tr>
-    <tr><td><b>Label</b></td><td>Variable Label</td><td>直接映射</td></tr>
-    <tr><td><b>Data Type</b></td><td>Type</td><td>Char → text, Num → integer/float</td></tr>
-    <tr><td><b>Length</b></td><td>Length</td><td>直接映射（自动去 .0 后缀）</td></tr>
-    <tr><td><b>Significant Digits</b></td><td>—</td><td>默认空，用户填写</td></tr>
-    <tr><td><b>Format</b></td><td>Controlled Terms or Format</td><td>直接映射</td></tr>
-    <tr><td><b>Mandatory</b></td><td>Core</td><td>Req → Yes, Exp/Perm → No</td></tr>
-    <tr><td><b>Assigned Value</b></td><td>—</td><td>置空，用户填写</td></tr>
-    <tr><td><b>Codelist</b></td><td>Controlled Terms or Format</td><td>直接映射</td></tr>
-    <tr><td><b>Submission Value</b></td><td>CDISC Submission Value</td><td>直接映射</td></tr>
-    <tr><td><b>Common</b></td><td>—</td><td>置空，用户填写</td></tr>
-    <tr><td><b>Origin</b></td><td>Origin</td><td>直接映射</td></tr>
-    <tr><td><b>Source</b></td><td>Source</td><td>直接映射</td></tr>
-    <tr><td><b>Pages</b></td><td>CRF Page</td><td>直接映射</td></tr>
-    <tr><td><b>Text</b></td><td>Text</td><td>Spec "Text" 列（原 Derived Method）</td></tr>
-    <tr><td><b>Predecessor</b></td><td>—</td><td>置空，用户填写</td></tr>
-    <tr><td><b>Role</b></td><td>Role</td><td>直接映射</td></tr>
-    <tr><td><b>Has No Data</b></td><td>—</td><td>置空，用户填写</td></tr>
-    <tr><td><b>Comment</b></td><td>Comment</td><td>直接映射</td></tr>
-    <tr><td><b>Developer Notes</b></td><td>—</td><td>置空，用户填写</td></tr>
-    <tr><td><b>SUPP</b></td><td>SUPP</td><td>直接映射</td></tr>
-    <tr><td><b>QEVAL</b></td><td>QEVAL</td><td>直接映射</td></tr>
-  </tbody>
-</table>
-
-<h4>3. 附加映射说明</h4>
-<p><b>Method</b>：Spec "Method" 列值映射到 Method 字段（标记变量是否有方法描述）。<b>Codelist</b> 和 <b>Format</b> 均来自 Spec "Controlled Terms or Format" 列。</p>
-
-<h4>4. 数据流向</h4>
-<p>解析结果存入 <code>sas_project_spec</code> 表（按用户隔离） → 用户在 Variables 页面可修改 → 同步生成 <code>spec_synced_{projectId}.xlsx</code> → 下游 VLM / Codelists / Pages / Define 提取均读取此同步文件。</p>
-`
-
-const vlmRuleHtml = `
-<h4>1. 前置依赖</h4>
-<p>需要已上传 <b>XPT 数据集</b>和<b>项目 Spec</b>（已处理）。系统扫描 XPT 目录下可用的域名来确定哪些域参与提取。</p>
-
-<h4>2. 提取配置</h4>
-<p>系统按预置的 <code>vlm_configs</code> 逐项处理，每项包含：<code>(域名, 排序变量, 分组变量列表, 码表参数)</code>。典型配置如下：</p>
-<table class="rule-table">
-  <thead><tr><th>域</th><th>排序变量</th><th>分组变量</th><th>识别模式</th></tr></thead>
-  <tbody>
-    <tr><td>TS</td><td>TSSEQ</td><td>TSPARMCD, TSPARM</td><td>TSPARMCD 模式</td></tr>
-    <tr><td>TX</td><td>TXSEQ</td><td>TXPARMCD, TXPARM</td><td>PARMCD 模式</td></tr>
-    <tr><td>LB</td><td>LBSEQ</td><td>LBCAT, LBTESTCD, LBTEST</td><td>TESTCD 模式</td></tr>
-    <tr><td>EG / PC / PP / VS / IE 等</td><td>各自 SEQ</td><td>各自 TESTCD + TEST</td><td>TESTCD 模式</td></tr>
-  </tbody>
-</table>
-
-<h4>3. 字段生成规则</h4>
-<table class="rule-table">
-  <thead><tr><th>字段</th><th>生成规则</th></tr></thead>
-  <tbody>
-    <tr><td><b>Dataset</b></td><td>配置中的域名转大写（如 <code>lb → LB</code>）</td></tr>
-    <tr><td><b>Variable</b></td><td>
-      <b>TSPARMCD 模式</b>：<code>{DATASET}VAL</code>（如 TSVAL）<br/>
-      <b>PARMCD 模式</b>：<code>{DATASET}VAL</code>（如 TXVAL）<br/>
-      <b>TESTCD 模式</b>：<code>{DATASET}ORRES</code>（如 LBORRES）
-    </td></tr>
-    <tr><td><b>Where Clause</b></td><td>
-      <b>TSPARMCD</b>：<code>TSPARMCD EQ "{该行 TSPARMCD 值}"</code><br/>
-      <b>PARMCD</b>：<code>{域}PARMCD EQ "{该行 PARMCD 值}"</code><br/>
-      <b>TESTCD</b>：<code>{域}TESTCD EQ "{该行 TESTCD 值}"</code>
-    </td></tr>
-    <tr><td><b>Label</b></td><td>取对应参数/测试名称列的值（如 TSPARM、LBTEST），即 <code>*CD</code> 列去掉 CD 的同名列</td></tr>
-    <tr><td><b>Controlled Terms or Format</b></td><td>不自动填充（留空，用户可手动编辑）</td></tr>
-    <tr><td><b>Origin</b></td><td><b>TSPARMCD / PARMCD</b>：<code>Assigned</code>；<b>TESTCD</b>：<code>CRF</code></td></tr>
-    <tr><td><b>Pages</b></td><td>不自动填充（后续由 Pages 流程补充）</td></tr>
-    <tr><td><b>Derivation/Comment</b></td><td>仅 TSPARMCD 模式取 <code>TSVAL</code> 列的值作为注释</td></tr>
-    <tr><td><b>Method</b></td><td>仅 TSPARMCD 模式设为 <code>"Y"</code></td></tr>
-    <tr><td><b>Comment / 类别</b></td><td>不自动填充</td></tr>
-  </tbody>
-</table>
-
-<h4>4. 去重与排序</h4>
-<p>对每组 XPT 数据按分组变量 <code>drop_duplicates</code> 后逐行生成，最终按 Dataset、Variable、Where Clause 排序。结果存入 <code>sas_vlm_data</code> 表供用户审查编辑。</p>
-`
-
-const codelistRuleHtml = `
-<h4>1. 前置依赖</h4>
-<p>需要已上传 <b>XPT 数据集</b>和<b>项目 Spec</b>（已处理）。</p>
-
-<h4>2. 提取流程</h4>
-<ol>
-  <li><b>从 Spec 识别需要码表的变量</b>：遍历每个域的 Spec，读取 <code>CDISC Submission Value</code> / <code>Controlled Terms or Format</code> / <code>Codelist</code> 列（按优先级），有值的变量需要生成 CodeList</li>
-  <li><b>从 XPT 提取实际值</b>：读取对应 XPT 文件，收集该变量的所有唯一值（<code>#</code> 分隔拼接）</li>
-  <li><b>拆分为逐行码表</b>：将拼接的值按 <code>#</code> 拆开，每个值为一条 code 行</li>
-  <li><b>合并 VLM 阶段产生的附加码表</b>（如 ARM/ARMCD 等域配置生成的码表行）</li>
-  <li><b>后处理</b>：按 <code>vcd → cdnum</code> 重排序号；对 <code>type=Num</code> 且有 <code>codeDes</code> 的，把 code 设为序号</li>
-</ol>
-
-<h4>3. 字段说明</h4>
-<table class="rule-table">
-  <thead><tr><th>字段</th><th>来源与规则</th></tr></thead>
-  <tbody>
-    <tr><td><b>vcd</b></td><td>码表标识符，取自 Spec 的 <code>CDISC Submission Value</code> 或 <code>Controlled Terms or Format</code> 列值</td></tr>
-    <tr><td><b>vlabel</b></td><td>变量标签，来自 Spec 对应变量的 Label</td></tr>
-    <tr><td><b>type</b></td><td>数据类型，来自 Spec（Char / Num），默认 Char</td></tr>
-    <tr><td><b>cdnum</b></td><td>代码序号，在每个 vcd 组内从 1 开始自动编号</td></tr>
-    <tr><td><b>code</b></td><td>代码值，从 XPT 中该变量的实际唯一值提取；<code>type=Num</code> 且有 codeDes 时设为序号</td></tr>
-    <tr><td><b>code_des</b></td><td>代码描述（Decoded Value），目前留空由用户填写</td></tr>
-    <tr><td><b>code_ver</b></td><td>代码版本（如 CDISC CT 版本号），留空由用户填写</td></tr>
-    <tr><td><b>flag</b></td><td>固定域标记：<code>ARM, ARMCD, VISIT, VISITNUM, IETEST, IETESTCD</code> 等预设域的 flag 为 <code>"Y"</code>，其余为空</td></tr>
-  </tbody>
-</table>
-
-<h4>4. 过滤规则</h4>
-<p>Spec 中变量名包含 <code>CATN</code> 或 <code>TESTN</code> 的行会被自动跳过（非标准编码变量）。Spec 中受控术语列为空的行也会被跳过。</p>
-
-<h4>5. 数据存储</h4>
-<p>结果存入 <code>sas_codelist_data</code> 表，按用户隔离，用户可在 CodeList 编辑页面审查修改。</p>
-`
-
-const pagesRuleHtml = `
-<h4>1. 前置依赖</h4>
-<p>需要已上传 <b>aCRF</b>（处理后生成 <code>Annots2.xlsx</code>）和<b>项目 Spec</b>（已处理）。</p>
-
-<h4>2. 提取流程</h4>
-<ol>
-  <li>读取 <code>Annots2.xlsx</code>，解析每条 PDF 注释的文本内容和所在页码</li>
-  <li>读取 Spec 中所有域的变量列表</li>
-  <li>将注释文本与变量名进行匹配（支持 <code>DOMAIN.VARIABLE</code> 和 <code>VARIABLE</code> 两种格式）</li>
-  <li>汇总每个变量对应的所有页码，去重、排序后拼接为字符串（如 "12, 15, 23"）</li>
-</ol>
-
-<h4>3. 字段说明</h4>
-<table class="rule-table">
-  <thead><tr><th>字段</th><th>来源与规则</th></tr></thead>
-  <tbody>
-    <tr><td><b>dataset</b></td><td>域名（如 DM、AE），从 Spec 的 Domain Sheet 名获取</td></tr>
-    <tr><td><b>variable</b></td><td>变量名，来自 Spec</td></tr>
-    <tr><td><b>pages</b></td><td>注释文本匹配到的 PDF 页码，去重排序后逗号拼接</td></tr>
-    <tr><td><b>origin</b></td><td>来自 Spec 的 Origin 字段</td></tr>
-  </tbody>
-</table>
-
-<h4>4. 数据存储</h4>
-<p>结果存入 <code>sas_pages_data</code> 表，按用户隔离，用户可在 Pages 编辑页面审查修改。</p>
-`
-
-const ruleContents = { datasets: datasetsRuleHtml, variables: variablesRuleHtml, vlm: vlmRuleHtml, codelist: codelistRuleHtml, pages: pagesRuleHtml }
-const currentRuleHtml = computed(() => ruleContents[activeRuleTab.value] || '')
-
 const showRule = (tab) => {
+  showGuideDrawer.value = false
   activeRuleTab.value = tab
-  showRuleDialog.value = true
+  showRuleDrawer.value = true
 }
+
+const showGuide = () => {
+  showRuleDrawer.value = false
+  activeRuleTab.value = ''
+  showGuideDrawer.value = true
+}
+
+const handleRuleDrawerClose = (visible) => {
+  showRuleDrawer.value = visible
+  if (!visible) {
+    activeRuleTab.value = ''
+  }
+}
+
+watch(
+  () => route.fullPath,
+  () => {
+    showRuleDrawer.value = false
+    showGuideDrawer.value = false
+    activeRuleTab.value = ''
+  },
+)
 
 const userInfo = computed(() => {
   try {
@@ -389,17 +218,18 @@ const userInfo = computed(() => {
   overflow: hidden;
 }
 
-.saas-sidebar {
-  width: var(--saas-sidebar-width);
+.saas-rules-rail {
+  width: var(--saas-rules-rail-width, 56px);
   background: var(--saas-bg-sidebar);
   display: flex;
   flex-direction: column;
   align-items: center;
   flex-shrink: 0;
-  z-index: 100;
+  z-index: 2100;
   overflow: hidden;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
 
-  .sidebar-brand {
+  .rules-rail-header {
     height: var(--saas-topbar-height);
     display: flex;
     align-items: center;
@@ -407,18 +237,18 @@ const userInfo = computed(() => {
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     flex-shrink: 0;
     width: 100%;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: var(--saas-font-rules);
+    color: rgba(255, 255, 255, 0.45);
+    letter-spacing: 0.08em;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
     cursor: default;
-
-    .brand-icon {
-      width: 28px;
-      height: 28px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
+    user-select: none;
   }
 
-  .sidebar-nav {
+  .rules-rail-nav {
     flex: 1;
     padding: 12px 0;
     display: flex;
@@ -437,7 +267,16 @@ const userInfo = computed(() => {
     border-radius: var(--saas-radius-md);
     cursor: pointer;
     color: rgba(255, 255, 255, 0.5);
+    border: none;
+    padding: 0;
+    background: transparent;
+    font-family: inherit;
     transition: all var(--saas-transition);
+
+    &:focus-visible {
+      outline: 2px solid var(--saas-primary-lighter);
+      outline-offset: 1px;
+    }
 
     &:hover {
       background: var(--saas-bg-sidebar-hover);
@@ -458,26 +297,25 @@ const userInfo = computed(() => {
     }
   }
 
-  .nav-divider {
-    width: 28px;
-    height: 1px;
-    background: rgba(255, 255, 255, 0.12);
-    margin: 8px auto;
-  }
+  .nav-guide {
+    position: relative;
+    margin-top: 9px;
 
-  .nav-section-label {
-    font-size: 8px;
-    color: rgba(255, 255, 255, 0.3);
-    text-align: center;
-    letter-spacing: 0.05em;
-    margin-bottom: 4px;
-    line-height: 1;
+    &::before {
+      content: '';
+      position: absolute;
+      top: -7px;
+      left: 8px;
+      right: 8px;
+      height: 1px;
+      background: rgba(255, 255, 255, 0.12);
+    }
   }
 
   .nav-letter {
     font-size: 14px;
     font-weight: 700;
-    font-family: 'SF Mono', 'Consolas', monospace;
+    font-family: var(--saas-font-rules);
   }
 }
 
@@ -607,59 +445,6 @@ const userInfo = computed(() => {
   flex: 1;
   overflow: auto;
   background: var(--saas-bg-page);
-}
-
-// 处理规则对话框
-:deep(.rule-dialog) {
-  .rule-content {
-    font-size: 14px;
-    line-height: 1.7;
-    color: var(--saas-text-primary, #1f2937);
-    max-height: 70vh;
-    overflow-y: auto;
-
-    h4 {
-      margin: 18px 0 8px;
-      font-size: 15px;
-      color: var(--saas-text-primary, #1f2937);
-      &:first-child { margin-top: 0; }
-    }
-    p { margin: 6px 0; }
-    code {
-      background: var(--saas-bg-input, #f3f4f6);
-      padding: 1px 6px;
-      border-radius: 4px;
-      font-size: 13px;
-      color: var(--saas-primary-dark, #2563eb);
-    }
-    ol, ul { padding-left: 20px; margin: 6px 0; }
-    li { margin: 4px 0; }
-
-    .rule-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 10px 0;
-      font-size: 13px;
-
-      th, td {
-        border: 1px solid var(--saas-border-light, #e5e7eb);
-        padding: 8px 12px;
-        text-align: left;
-      }
-      th {
-        background: var(--saas-bg-input, #f3f4f6);
-        font-weight: 600;
-        font-size: 12px;
-        text-transform: uppercase;
-        letter-spacing: 0.03em;
-      }
-      td:first-child {
-        width: 160px;
-        white-space: nowrap;
-        font-family: 'SF Mono', 'Consolas', monospace;
-      }
-    }
-  }
 }
 
 // 用户信息对话框

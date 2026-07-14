@@ -1,67 +1,55 @@
 <template>
   <div class="codelist-edit-page">
-    <!-- 模式切换工具栏 -->
-    <div class="page-toolbar">
-      <div class="toolbar-left">
-        <h3 class="page-title">Codelists</h3>
-        <span class="page-desc">代码列表管理 (Controlled Terminology)</span>
-      </div>
-      <div class="toolbar-right">
-        <el-button v-if="editMode === 'table' && markedVcdsInList.length > 0" type="danger" size="small" :loading="batchDeleteLoading" @click="confirmBatchDeleteMarked" round>
-          一键删除已标记 ({{ markedVcdsInList.length }})
-        </el-button>
-        <el-button v-if="editMode === 'table'" type="success" size="small" :loading="nciLoading" @click="fillNciCodes" round>
-          匹配NCI码
-        </el-button>
-        <el-button v-if="editMode === 'table'" type="warning" size="small" :loading="edcCompareLoading" @click="compareEdc" round>
-          比对EDC
-        </el-button>
-        <el-button v-if="editMode === 'table'" size="small" @click="goToMerge" round>
-          合并Codelist
-        </el-button>
-        <el-radio-group v-model="editMode" size="small">
-          <el-radio-button value="table">表格模式</el-radio-button>
-          <el-radio-button value="excel">Excel 模式</el-radio-button>
-        </el-radio-group>
-      </div>
-    </div>
-
     <!-- 表格模式 -->
     <div v-if="editMode === 'table'" class="table-mode">
-      <div class="table-layout">
+      <div class="table-layout ws-edit-grid">
         <!-- 左侧 VCD 导航 -->
         <div class="domain-sidebar">
-          <div class="sidebar-title">VCD 导航</div>
-          <div class="sidebar-search">
-            <el-input v-model="vcdSearch" placeholder="搜索VCD..." size="small" clearable prefix-icon="Search" />
-          </div>
-          <div v-if="vcdsLoading" class="sidebar-loading">
-            <el-icon class="is-loading"><Loading /></el-icon>
-          </div>
-          <div v-else-if="filteredVcds.length === 0" class="sidebar-empty">
+          <template v-if="vcdsLoading">
+            <div class="sidebar-head-spacer" aria-hidden="true"></div>
+            <div class="sidebar-loading">
+              <el-icon class="is-loading"><Loading /></el-icon>
+            </div>
+          </template>
+          <template v-else-if="vcds.length === 0">
+            <div class="sidebar-head-spacer" aria-hidden="true"></div>
+            <div class="sidebar-empty">
             <span>暂无数据</span>
-            <el-button type="primary" size="small" @click="extractData" :loading="extracting">提取数据</el-button>
-          </div>
+            <el-button type="primary" size="small" @click="extractData" :loading="extracting" :disabled="extracting">提取Codelist</el-button>
+            </div>
+          </template>
           <template v-else>
-            <div
-              v-for="vcd in filteredVcds" :key="vcd"
-              class="domain-item"
-              :class="{ active: selectedVcd === vcd, 'was-deleted': deletedVcdsSet.has(vcd) }"
-              @click="selectVcd(vcd)"
-              @mouseenter="hoveredVcd = vcd"
-              @mouseleave="hoveredVcd = ''"
-            >
-              <span class="domain-name">
-                <el-icon v-if="deletedVcdsSet.has(vcd)" class="deleted-marker" title="曾被删除，请检查"><WarningFilled /></el-icon>
-                {{ vcd }}
-              </span>
-              <div class="domain-right">
-                <span class="domain-count" v-show="hoveredVcd !== vcd">{{ vcdCounts[vcd] || 0 }}</span>
-                <el-icon
-                  v-show="hoveredVcd === vcd"
-                  class="vcd-delete-icon"
-                  @click.stop="confirmDeleteVcd(vcd)"
-                ><Delete /></el-icon>
+            <div class="sidebar-search">
+              <el-input
+                v-model="vcdSearch"
+                placeholder="搜索 VCD..."
+                size="small"
+                clearable
+                prefix-icon="Search"
+              />
+            </div>
+            <div class="sidebar-list">
+              <div v-if="filteredVcds.length === 0" class="sidebar-empty-inline">无匹配 VCD</div>
+              <div
+                v-for="vcd in filteredVcds" :key="vcd"
+                class="domain-item"
+                :class="{ active: selectedVcd === vcd, 'was-deleted': deletedVcdsSet.has(vcd) }"
+                @click="selectVcd(vcd)"
+                @mouseenter="hoveredVcd = vcd"
+                @mouseleave="hoveredVcd = ''"
+              >
+                <span class="domain-name">
+                  <el-icon v-if="deletedVcdsSet.has(vcd)" class="deleted-marker" title="曾被删除，请检查"><WarningFilled /></el-icon>
+                  {{ vcd }}
+                </span>
+                <div class="domain-right">
+                  <span class="domain-count" v-show="hoveredVcd !== vcd">{{ vcdCounts[vcd] || 0 }}</span>
+                  <el-icon
+                    v-show="hoveredVcd === vcd"
+                    class="vcd-delete-icon"
+                    @click.stop="confirmDeleteVcd(vcd)"
+                  ><Delete /></el-icon>
+                </div>
               </div>
             </div>
           </template>
@@ -69,15 +57,44 @@
 
         <!-- 右侧表格 -->
         <div class="table-content">
-          <div class="table-actions">
-            <el-button type="primary" size="small" @click="showAddDialog" :disabled="!selectedVcd">
-              <el-icon><Plus /></el-icon> 新增
-            </el-button>
-            <el-button size="small" @click="refreshData">
-              <el-icon><Refresh /></el-icon> 刷新
-            </el-button>
+          <div class="table-actions ws-toolbar-zones">
+            <div class="ws-toolbar-zone ws-toolbar-zone--start">
+              <div class="ws-btn-group">
+                <el-button type="primary" size="small" @click="showAddDialog" :disabled="!selectedVcd">
+                  <el-icon><Plus /></el-icon> 新增
+                </el-button>
+                <el-button size="small" @click="refreshData">
+                  <el-icon><Refresh /></el-icon> 刷新
+                </el-button>
+              </div>
+            </div>
+            <div class="ws-toolbar-zone ws-toolbar-zone--center">
+              <div v-if="markedVcdsInList.length > 0" class="ws-btn-group ws-btn-group--danger">
+                <el-button type="danger" size="small" :loading="batchDeleteLoading" @click="confirmBatchDeleteMarked">
+                  一键删除已标记 ({{ markedVcdsInList.length }})
+                </el-button>
+              </div>
+              <div class="ws-btn-group ws-btn-group--success">
+                <el-button size="small" :loading="nciLoading" @click="fillNciCodes">
+                  匹配NCI码
+                </el-button>
+                <el-button size="small" :loading="edcCompareLoading" @click="compareEdc">
+                  比对EDC
+                </el-button>
+                <el-button size="small" @click="goToMerge">
+                  合并Codelist
+                </el-button>
+              </div>
+            </div>
+            <div class="ws-toolbar-zone ws-toolbar-zone--end">
+              <el-radio-group v-model="editMode" size="small" class="ws-mode-switch">
+                <el-radio-button value="table">表格模式</el-radio-button>
+                <el-radio-button value="excel">Excel 模式</el-radio-button>
+              </el-radio-group>
+            </div>
           </div>
 
+          <div class="table-body">
           <el-table
             :data="tableData"
             v-loading="tableLoading"
@@ -179,20 +196,32 @@
               </template>
             </el-table-column>
           </el-table>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- Excel 模式 -->
     <div v-if="editMode === 'excel'" class="excel-mode">
-      <div class="excel-toolbar">
-        <el-button size="small" type="primary" :loading="excelSaving" @click="saveExcel" :disabled="!excelLoaded" round>
-          <el-icon><DocumentChecked /></el-icon> 保存到数据库
-        </el-button>
-        <el-button size="small" type="success" @click="exportExcel" :disabled="!excelLoaded" round>
-          <el-icon><Download /></el-icon> 导出 xlsx
-        </el-button>
-        <el-tag v-if="excelDirty" type="warning" size="small" effect="plain">未保存</el-tag>
+      <div class="excel-toolbar ws-toolbar-zones">
+        <div class="ws-toolbar-zone ws-toolbar-zone--start">
+          <div class="ws-btn-group">
+            <el-button type="primary" size="small" :loading="excelSaving" @click="saveExcel" :disabled="!excelLoaded">
+              <el-icon><DocumentChecked /></el-icon> 保存到数据库
+            </el-button>
+            <el-button size="small" @click="exportExcel" :disabled="!excelLoaded">
+              <el-icon><Download /></el-icon> 导出 xlsx
+            </el-button>
+          </div>
+          <el-tag v-if="excelDirty" type="warning" size="small" effect="plain">未保存</el-tag>
+        </div>
+        <div class="ws-toolbar-zone ws-toolbar-zone--center"></div>
+        <div class="ws-toolbar-zone ws-toolbar-zone--end">
+          <el-radio-group v-model="editMode" size="small" class="ws-mode-switch">
+            <el-radio-button value="table">表格模式</el-radio-button>
+            <el-radio-button value="excel">Excel 模式</el-radio-button>
+          </el-radio-group>
+        </div>
       </div>
       <div class="excel-container">
         <div v-if="excelLoading" class="excel-loading">
@@ -303,6 +332,12 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Loading, DocumentChecked, Download, Delete, WarningFilled } from '@element-plus/icons-vue'
 import LuckyExcel from 'luckyexcel'
 import service from '@/axios'
+import {
+  CODELIST_SCOPES,
+  extractCodelists,
+  getCodelistExtractionError,
+  showCodelistExtractionResult,
+} from '@/utils/codelistExtraction'
 
 const props = defineProps({ projectId: String })
 const route = useRoute()
@@ -423,6 +458,7 @@ const loadVcds = async () => {
 }
 
 const selectVcd = async (vcd) => {
+  cancelEdit()
   selectedVcd.value = vcd
   tableLoading.value = true
   try {
@@ -564,18 +600,30 @@ const submitAdd = async () => {
 }
 
 const extractData = async () => {
+  if (extracting.value) return
+  try {
+    await ElMessageBox.confirm(
+      '该操作会重建 Variables 与 VLM 范围的系统提取 Codelist。已标记删除、合并及人工维护的数据将按服务端规则保留。请确认当前编辑已保存。是否继续？',
+      '确认重建数据',
+      { confirmButtonText: '继续执行', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return
+  }
+
   extracting.value = true
   try {
-    ElMessage.info('正在提取CodeList数据，请稍候（可能需要1-2分钟）...')
-    const res = await service.post(`${baseUrl}/api/codelist/extract-codelist`, { projectId: currentProjectId.value }, { timeout: 300000 })
-    if (res.data?.success) {
-      ElMessage.success('CodeList数据提取成功')
-      loadVcds()
-    } else {
-      ElMessage.error(res.data?.message || '提取失败')
-    }
+    ElMessage.info('正在提取全部 Codelist，请稍候...')
+    const result = await extractCodelists({
+      baseUrl,
+      projectId: currentProjectId.value,
+      scope: CODELIST_SCOPES.ALL,
+    })
+    await loadVcds()
+    if (selectedVcd.value) await selectVcd(selectedVcd.value)
+    await showCodelistExtractionResult(CODELIST_SCOPES.ALL, result)
   } catch (e) {
-    ElMessage.error('提取失败: ' + (e.response?.data?.message || e.message))
+    ElMessage.error(getCodelistExtractionError(e, CODELIST_SCOPES.ALL))
   } finally {
     extracting.value = false
   }
@@ -789,40 +837,7 @@ onBeforeUnmount(() => {
   }
 }
 
-.table-mode {
-  flex: 1;
-  overflow: hidden;
-}
-
-.table-layout {
-  display: flex;
-  height: 100%;
-}
-
 .domain-sidebar {
-  width: 220px;
-  min-width: 220px;
-  background: var(--saas-bg-card, #fff);
-  border-right: 1px solid var(--saas-border-light, #e5e7eb);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-
-  .sidebar-title {
-    padding: 12px 16px;
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--saas-text-tertiary, #9ca3af);
-    border-bottom: 1px solid var(--saas-border-light, #e5e7eb);
-  }
-
-  .sidebar-search {
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--saas-border-light, #e5e7eb);
-  }
-
   .sidebar-loading, .sidebar-empty {
     padding: 24px 16px;
     text-align: center;
@@ -836,29 +851,6 @@ onBeforeUnmount(() => {
 }
 
 .domain-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 16px;
-  cursor: pointer;
-  transition: background 0.15s;
-  border-bottom: 1px solid var(--saas-border-light, #f3f4f6);
-
-  &:hover { background: var(--saas-bg-hover, #f9fafb); }
-  &.active {
-    background: var(--saas-primary-bg, #eff6ff);
-    .domain-name { color: var(--saas-primary, #4f46e5); font-weight: 600; }
-  }
-
-  .domain-name {
-    font-size: 13px;
-    color: var(--saas-text-primary, #1f2937);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 150px;
-  }
-
   .domain-right {
     display: flex;
     align-items: center;
@@ -867,45 +859,23 @@ onBeforeUnmount(() => {
   }
 
   .domain-count {
-    font-size: 11px;
-    color: var(--saas-text-tertiary, #9ca3af);
-    background: var(--saas-bg-input, #f3f4f6);
     padding: 1px 8px;
-    border-radius: 10px;
     flex-shrink: 0;
   }
 
   .vcd-delete-icon {
     font-size: 14px;
-    color: var(--el-color-danger, #f56c6c);
+    color: var(--saas-danger);
     cursor: pointer;
     transition: color 0.15s;
-    &:hover { color: #c0392b; }
+    &:hover { color: #dc2626; }
   }
 
   .deleted-marker {
     font-size: 13px;
-    color: var(--el-color-warning, #e6a23c);
+    color: var(--saas-warning);
     margin-right: 2px;
     vertical-align: -1px;
-  }
-
-  &.was-deleted {
-    background: #fff8e6;
-    border-left: 3px solid var(--el-color-warning, #e6a23c);
-    .domain-name { color: var(--el-color-warning, #c68a14); }
-  }
-}
-
-.table-content {
-  flex: 1;
-  padding: 16px;
-  overflow: auto;
-
-  .table-actions {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 12px;
   }
 }
 
@@ -914,15 +884,6 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-.excel-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 16px;
-  background: var(--saas-bg-card, #fff);
-  border-bottom: 1px solid var(--saas-border-light, #e5e7eb);
 }
 
 .excel-container {

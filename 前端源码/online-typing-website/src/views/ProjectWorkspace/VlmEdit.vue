@@ -1,70 +1,86 @@
 <template>
   <div class="vlm-edit-page">
-    <!-- 模式切换工具栏 -->
-    <div class="page-toolbar">
-      <div class="toolbar-left">
-        <h3 class="page-title">ValueLevel</h3>
-        <span class="page-desc">变量级元数据 (Value Level Metadata)</span>
-      </div>
-      <div class="toolbar-right">
-        <el-button type="warning" size="small" :loading="extracting" @click="extractWhereClause" round>
-          提取Where Clause
-        </el-button>
-        <el-button type="primary" size="small" :loading="xptFieldsExtracting" @click="extractXptFields" plain round>
-          <el-icon><DataAnalysis /></el-icon> 提取XPT字段
-        </el-button>
-        <el-button type="success" size="small" :loading="codelistExtracting" @click="extractCodelist" plain round>
-          提取Codelist
-        </el-button>
-        <el-button type="warning" size="small" :loading="pagesExtracting" @click="extractVlmPages" plain round>
-          <el-icon><Document /></el-icon> 提取Pages
-        </el-button>
-        <el-radio-group v-model="editMode" size="small">
-          <el-radio-button value="table">表格模式</el-radio-button>
-          <el-radio-button value="excel">Excel 模式</el-radio-button>
-        </el-radio-group>
-      </div>
-    </div>
-
     <!-- 表格模式 -->
     <div v-if="editMode === 'table'" class="table-mode">
-      <div class="table-layout">
+      <div class="table-layout ws-edit-grid">
         <!-- 左侧 Domain 导航 -->
         <div class="domain-sidebar">
-          <div class="sidebar-title">Dataset 导航</div>
-          <div v-if="datasetsLoading" class="sidebar-loading">
-            <el-icon class="is-loading"><Loading /></el-icon>
-          </div>
-          <div v-else-if="datasets.length === 0" class="sidebar-empty">
+          <template v-if="datasetsLoading">
+            <div class="sidebar-head-spacer" aria-hidden="true"></div>
+            <div class="sidebar-loading">
+              <el-icon class="is-loading"><Loading /></el-icon>
+            </div>
+          </template>
+          <template v-else-if="datasets.length === 0">
+            <div class="sidebar-head-spacer" aria-hidden="true"></div>
+            <div class="sidebar-empty">
             <span>暂无数据</span>
-            <el-button type="primary" size="small" @click="extractWhereClause" :loading="extracting">提取Where Clause</el-button>
-          </div>
+            </div>
+          </template>
           <template v-else>
-            <div
-              v-for="ds in datasets" :key="ds"
-              class="domain-item"
-              :class="{ active: selectedDataset === ds }"
-              @click="selectDataset(ds)"
-            >
-              <span class="domain-name">{{ ds }}</span>
-              <span class="domain-count">{{ datasetCounts[ds] || 0 }}</span>
+            <div class="sidebar-search">
+              <el-input
+                v-model="searchKeyword"
+                placeholder="搜索变量或标签..."
+                size="small"
+                clearable
+                prefix-icon="Search"
+              />
+            </div>
+            <div class="sidebar-list">
+              <div
+                v-for="ds in datasets" :key="ds"
+                class="domain-item"
+                :class="{ active: selectedDataset === ds }"
+                @click="selectDataset(ds)"
+              >
+                <span class="domain-name">{{ ds }}</span>
+                <span class="domain-count">{{ datasetCounts[ds] || 0 }}</span>
+              </div>
             </div>
           </template>
         </div>
 
         <!-- 右侧表格 -->
         <div class="table-content">
-          <div class="table-actions">
-            <el-button type="primary" size="small" @click="showAddDialog" :disabled="!selectedDataset">
-              <el-icon><Plus /></el-icon> 新增
-            </el-button>
-            <el-button size="small" @click="refreshData">
-              <el-icon><Refresh /></el-icon> 刷新
-            </el-button>
+          <div class="table-actions ws-toolbar-zones">
+            <div class="ws-toolbar-zone ws-toolbar-zone--start">
+              <div class="ws-btn-group">
+                <el-button type="primary" size="small" @click="showAddDialog" :disabled="!selectedDataset">
+                  <el-icon><Plus /></el-icon> 新增
+                </el-button>
+                <el-button size="small" @click="refreshData">
+                  <el-icon><Refresh /></el-icon> 刷新
+                </el-button>
+              </div>
+            </div>
+            <div class="ws-toolbar-zone ws-toolbar-zone--center">
+              <div class="ws-btn-group ws-btn-group--extract">
+                <el-button size="small" :loading="extracting" @click="extractWhereClause">
+                  提取Where Clause
+                </el-button>
+                <el-button size="small" :loading="xptFieldsExtracting" @click="extractXptFields">
+                  <el-icon><DataAnalysis /></el-icon> 提取XPT字段
+                </el-button>
+                <el-button size="small" :loading="codelistExtracting" :disabled="codelistExtracting" @click="extractCodelist">
+                  提取Codelist
+                </el-button>
+                <el-button size="small" :loading="pagesExtracting" @click="extractVlmPages">
+                  <el-icon><Document /></el-icon> 提取Pages
+                </el-button>
+              </div>
+            </div>
+            <div class="ws-toolbar-zone ws-toolbar-zone--end">
+              <el-radio-group v-model="editMode" size="small" class="ws-mode-switch">
+                <el-radio-button value="table">表格模式</el-radio-button>
+                <el-radio-button value="excel">Excel 模式</el-radio-button>
+              </el-radio-group>
+            </div>
           </div>
 
+          <div class="table-body">
           <el-table
-            :data="tableData"
+            :data="filteredTableData"
             v-loading="tableLoading"
             border
             stripe
@@ -75,7 +91,7 @@
             <el-table-column prop="sortOrder" label="Order" width="65" align="center">
               <template #default="{ row }"><span>{{ row.sortOrder }}</span></template>
             </el-table-column>
-            <el-table-column prop="dataset" label="Dataset" width="90">
+            <el-table-column prop="dataset" label="Dataset" width="90" class-name="col-dataset">
               <template #default="{ row }"><span>{{ row.dataset }}</span></template>
             </el-table-column>
             <el-table-column prop="variable" label="Variable" width="110">
@@ -197,20 +213,47 @@
               </template>
             </el-table-column>
           </el-table>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- Excel 模式 -->
     <div v-if="editMode === 'excel'" class="excel-mode">
-      <div class="excel-toolbar">
-        <el-button size="small" type="primary" :loading="excelSaving" @click="saveExcel" :disabled="!excelLoaded" round>
-          <el-icon><DocumentChecked /></el-icon> 保存到数据库
-        </el-button>
-        <el-button size="small" type="success" @click="exportExcel" :disabled="!excelLoaded" round>
-          <el-icon><Download /></el-icon> 导出 xlsx
-        </el-button>
-        <el-tag v-if="excelDirty" type="warning" size="small" effect="plain">未保存</el-tag>
+      <div class="excel-toolbar ws-toolbar-zones">
+        <div class="ws-toolbar-zone ws-toolbar-zone--start">
+          <div class="ws-btn-group">
+            <el-button type="primary" size="small" :loading="excelSaving" @click="saveExcel" :disabled="!excelLoaded">
+              <el-icon><DocumentChecked /></el-icon> 保存到数据库
+            </el-button>
+            <el-button size="small" @click="exportExcel" :disabled="!excelLoaded">
+              <el-icon><Download /></el-icon> 导出 xlsx
+            </el-button>
+          </div>
+          <el-tag v-if="excelDirty" type="warning" size="small" effect="plain">未保存</el-tag>
+        </div>
+        <div class="ws-toolbar-zone ws-toolbar-zone--center">
+          <div class="ws-btn-group ws-btn-group--extract">
+            <el-button size="small" :loading="extracting" @click="extractWhereClause">
+              提取Where Clause
+            </el-button>
+            <el-button size="small" :loading="xptFieldsExtracting" @click="extractXptFields">
+              <el-icon><DataAnalysis /></el-icon> 提取XPT字段
+            </el-button>
+            <el-button size="small" :loading="codelistExtracting" :disabled="codelistExtracting" @click="extractCodelist">
+              提取Codelist
+            </el-button>
+            <el-button size="small" :loading="pagesExtracting" @click="extractVlmPages">
+              <el-icon><Document /></el-icon> 提取Pages
+            </el-button>
+          </div>
+        </div>
+        <div class="ws-toolbar-zone ws-toolbar-zone--end">
+          <el-radio-group v-model="editMode" size="small" class="ws-mode-switch">
+            <el-radio-button value="table">表格模式</el-radio-button>
+            <el-radio-button value="excel">Excel 模式</el-radio-button>
+          </el-radio-group>
+        </div>
       </div>
       <div class="excel-container">
         <div v-if="excelLoading" class="excel-loading">
@@ -259,10 +302,16 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Loading, DocumentChecked, Download, Document, DataAnalysis } from '@element-plus/icons-vue'
 import LuckyExcel from 'luckyexcel'
 import service from '@/axios'
+import {
+  CODELIST_SCOPES,
+  extractCodelists,
+  getCodelistExtractionError,
+  showCodelistExtractionResult,
+} from '@/utils/codelistExtraction'
 
 const props = defineProps({ projectId: String })
 const route = useRoute()
@@ -277,6 +326,7 @@ const datasetCounts = ref({})
 const datasetsLoading = ref(false)
 const selectedDataset = ref('')
 const tableData = ref([])
+const searchKeyword = ref('')
 const tableLoading = ref(false)
 const extracting = ref(false)
 const xptFieldsExtracting = ref(false)
@@ -302,6 +352,16 @@ const excelLoading = ref(false)
 const excelLoaded = ref(false)
 const excelSaving = ref(false)
 const excelDirty = ref(false)
+
+const filteredTableData = computed(() => {
+  if (!searchKeyword.value) return tableData.value
+  const kw = searchKeyword.value.toLowerCase()
+  return tableData.value.filter(row =>
+    (row.variable && row.variable.toLowerCase().includes(kw)) ||
+    (row.label && row.label.toLowerCase().includes(kw)) ||
+    (row.whereClause && row.whereClause.toLowerCase().includes(kw))
+  )
+})
 
 const isEditing = (row, field) => {
   return editingRowId.value === row.id && (editingField.value === field || editingField.value === '__row__')
@@ -357,7 +417,9 @@ const loadDatasets = async () => {
 }
 
 const selectDataset = async (ds) => {
+  cancelEdit()
   selectedDataset.value = ds
+  searchKeyword.value = ''
   tableLoading.value = true
   try {
     const res = await service.get(`${baseUrl}/api/vlm/project/${currentProjectId.value}/dataset/${ds}`)
@@ -475,18 +537,30 @@ const extractXptFields = async () => {
 }
 
 const extractCodelist = async () => {
+  if (codelistExtracting.value) return
+  try {
+    await ElMessageBox.confirm(
+      '该操作会重建 VLM 级 Codelist Term，并更新 ValueLevel 中的 Codelist 引用。请确认当前编辑已保存。是否继续？',
+      '确认重建数据',
+      { confirmButtonText: '继续执行', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return
+  }
+
   codelistExtracting.value = true
   try {
-    ElMessage.info('正在提取 Codelist ...')
-    const res = await service.post(`${baseUrl}/api/vlm/extract-vlm-codelist/${currentProjectId.value}`, {}, { timeout: 180000 })
-    if (res.data?.success) {
-      ElMessage.success(res.data.data || 'Codelist 提取完成')
-      if (selectedDataset.value) selectDataset(selectedDataset.value)
-    } else {
-      ElMessage.error(res.data?.message || '提取失败')
-    }
+    ElMessage.info('正在提取 VLM 级 Codelist，请稍候...')
+    const result = await extractCodelists({
+      baseUrl,
+      projectId: currentProjectId.value,
+      scope: CODELIST_SCOPES.VLM,
+    })
+    await loadDatasets()
+    if (selectedDataset.value) await selectDataset(selectedDataset.value)
+    await showCodelistExtractionResult(CODELIST_SCOPES.VLM, result)
   } catch (e) {
-    ElMessage.error('提取Codelist失败: ' + (e.response?.data?.message || e.message))
+    ElMessage.error(getCodelistExtractionError(e, CODELIST_SCOPES.VLM))
   } finally {
     codelistExtracting.value = false
   }
@@ -658,35 +732,7 @@ onBeforeUnmount(() => {
   }
 }
 
-.table-mode {
-  flex: 1;
-  overflow: hidden;
-}
-
-.table-layout {
-  display: flex;
-  height: 100%;
-}
-
 .domain-sidebar {
-  width: 200px;
-  min-width: 200px;
-  background: var(--saas-bg-card, #fff);
-  border-right: 1px solid var(--saas-border-light, #e5e7eb);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-
-  .sidebar-title {
-    padding: 12px 16px;
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--saas-text-tertiary, #9ca3af);
-    border-bottom: 1px solid var(--saas-border-light, #e5e7eb);
-  }
-
   .sidebar-loading, .sidebar-empty {
     padding: 24px 16px;
     text-align: center;
@@ -699,61 +745,11 @@ onBeforeUnmount(() => {
   }
 }
 
-.domain-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 16px;
-  cursor: pointer;
-  transition: background 0.15s;
-  border-bottom: 1px solid var(--saas-border-light, #f3f4f6);
-
-  &:hover { background: var(--saas-bg-hover, #f9fafb); }
-  &.active {
-    background: var(--saas-primary-bg, #eff6ff);
-    .domain-name { color: var(--saas-primary, #4f46e5); font-weight: 600; }
-  }
-
-  .domain-name {
-    font-size: 13px;
-    color: var(--saas-text-primary, #1f2937);
-  }
-
-  .domain-count {
-    font-size: 11px;
-    color: var(--saas-text-tertiary, #9ca3af);
-    background: var(--saas-bg-input, #f3f4f6);
-    padding: 1px 8px;
-    border-radius: 10px;
-  }
-}
-
-.table-content {
-  flex: 1;
-  padding: 16px;
-  overflow: auto;
-
-  .table-actions {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 12px;
-  }
-}
-
 .excel-mode {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-.excel-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 16px;
-  background: var(--saas-bg-card, #fff);
-  border-bottom: 1px solid var(--saas-border-light, #e5e7eb);
 }
 
 .excel-container {

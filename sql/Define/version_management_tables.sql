@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS `file_version_history` (
     `file_id` VARCHAR(100) NOT NULL COMMENT '原文件ID',
     `project_id` VARCHAR(50) NOT NULL COMMENT '项目ID',
     `username` VARCHAR(100) COMMENT '上传用户名',
-    `file_category` ENUM('P21_SPEC','XPT','PROJECT_SPEC','ACRF','VLM','CODELIST') NOT NULL COMMENT '文件类别',
+    `file_category` ENUM('P21_SPEC','XPT','PROJECT_SPEC','ACRF','EDC_CODELIST','VLM','CODELIST') NOT NULL COMMENT '文件类别',
     `version_number` INT NOT NULL COMMENT '版本号(从1递增)',
     `original_name` VARCHAR(255) NOT NULL COMMENT '原始文件名',
     `server_file_name` VARCHAR(255) NOT NULL COMMENT '服务器存储文件名',
@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS `project_snapshot` (
 CREATE TABLE IF NOT EXISTS `snapshot_files` (
     `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID',
     `snapshot_id` BIGINT NOT NULL COMMENT '快照ID',
-    `file_category` ENUM('P21_SPEC','XPT','PROJECT_SPEC','ACRF','VLM','CODELIST') NOT NULL COMMENT '文件类别',
+    `file_category` ENUM('P21_SPEC','XPT','PROJECT_SPEC','ACRF','EDC_CODELIST','VLM','CODELIST') NOT NULL COMMENT '文件类别',
     `original_name` VARCHAR(255) COMMENT '原始文件名',
     `file_path` VARCHAR(500) NOT NULL COMMENT '快照时的文件路径(冻结副本)',
     `file_size` BIGINT COMMENT '文件大小(字节)',

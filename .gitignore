@@ -23,6 +23,7 @@ Define-XML/Project Ref/
 
 # Runtime & uploads
 uploads/
+projects/
 APP_ID_IS_UNDEFINED/
 
 # OS & temp files

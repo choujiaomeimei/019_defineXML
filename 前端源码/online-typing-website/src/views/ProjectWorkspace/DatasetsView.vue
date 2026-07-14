@@ -1,28 +1,38 @@
 <template>
   <div class="datasets-page">
-    <div class="page-toolbar">
-      <div class="toolbar-left">
-        <h3 class="page-title">Datasets</h3>
-        <span class="page-desc">P21 数据集定义</span>
-      </div>
-      <div class="toolbar-right">
-        <el-radio-group v-model="editMode" size="small">
-          <el-radio-button value="table">表格模式</el-radio-button>
-          <el-radio-button value="excel">Excel 模式</el-radio-button>
-        </el-radio-group>
-      </div>
-    </div>
-
     <!-- 表格模式 -->
     <div v-if="editMode === 'table'" class="table-mode">
-      <div class="table-toolbar">
-        <el-input v-model="searchKeyword" placeholder="搜索数据集..." size="small" clearable prefix-icon="Search" style="width:200px" />
-        <el-button type="primary" size="small" @click="showAddDialog"><el-icon><Plus /></el-icon> 新增</el-button>
-        <el-button size="small" @click="refreshData"><el-icon><Refresh /></el-icon> 刷新</el-button>
-      </div>
-      <el-table :data="filteredData" v-loading="tableLoading" border stripe size="small" max-height="calc(100vh - 220px)" @cell-dblclick="handleCellDblClick">
+      <div class="table-layout ws-flat-table">
+        <div class="ws-flat-head">
+          <div class="sidebar-search">
+            <el-input
+              v-model="searchKeyword"
+              placeholder="搜索数据集..."
+              size="small"
+              clearable
+              prefix-icon="Search"
+            />
+          </div>
+          <div class="table-actions ws-toolbar-zones">
+            <div class="ws-toolbar-zone ws-toolbar-zone--start">
+              <div class="ws-btn-group">
+                <el-button type="primary" size="small" @click="showAddDialog"><el-icon><Plus /></el-icon> 新增</el-button>
+                <el-button size="small" @click="refreshData"><el-icon><Refresh /></el-icon> 刷新</el-button>
+              </div>
+            </div>
+            <div class="ws-toolbar-zone ws-toolbar-zone--center"></div>
+            <div class="ws-toolbar-zone ws-toolbar-zone--end">
+              <el-radio-group v-model="editMode" size="small" class="ws-mode-switch">
+                <el-radio-button value="table">表格模式</el-radio-button>
+                <el-radio-button value="excel">Excel 模式</el-radio-button>
+              </el-radio-group>
+            </div>
+          </div>
+        </div>
+        <div class="table-body">
+      <el-table :data="filteredData" v-loading="tableLoading" border stripe size="small" max-height="calc(100vh - 260px)" @cell-dblclick="handleCellDblClick">
         <el-table-column type="index" label="#" width="45" fixed />
-        <el-table-column prop="dataset" label="Dataset" width="110" fixed>
+        <el-table-column prop="dataset" label="Dataset" width="90" fixed class-name="col-dataset">
           <template #default="{row}">
             <el-input v-if="isEditing(row,'dataset')" v-model="editForm.dataset" size="small" @keyup.enter="saveRow(row)" @keyup.escape="cancelEdit" />
             <span v-else class="ds-name" @dblclick.stop="startEdit(row,'dataset')">{{row.dataset||'-'}}</span>
@@ -115,13 +125,28 @@
           </template>
         </el-table-column>
       </el-table>
+        </div>
+      </div>
     </div>
 
     <!-- Excel 模式 -->
     <div v-if="editMode === 'excel'" class="excel-mode">
-      <div class="excel-toolbar">
-        <el-button type="success" size="small" @click="saveExcel" :loading="excelSaving" :disabled="!excelLoaded">保存到数据库</el-button>
-        <span v-if="excelDirty" class="dirty-hint">* 有未保存的修改</span>
+      <div class="excel-toolbar ws-toolbar-zones">
+        <div class="ws-toolbar-zone ws-toolbar-zone--start">
+          <div class="ws-btn-group">
+            <el-button type="primary" size="small" @click="saveExcel" :loading="excelSaving" :disabled="!excelLoaded">
+              保存到数据库
+            </el-button>
+          </div>
+          <span v-if="excelDirty" class="dirty-hint">* 有未保存的修改</span>
+        </div>
+        <div class="ws-toolbar-zone ws-toolbar-zone--center"></div>
+        <div class="ws-toolbar-zone ws-toolbar-zone--end">
+          <el-radio-group v-model="editMode" size="small" class="ws-mode-switch">
+            <el-radio-button value="table">表格模式</el-radio-button>
+            <el-radio-button value="excel">Excel 模式</el-radio-button>
+          </el-radio-group>
+        </div>
       </div>
       <div class="excel-container">
         <div v-if="excelLoading" class="excel-loading">
@@ -314,11 +339,9 @@ onBeforeUnmount(() => { destroyLuckysheet() })
   .page-title { font-size: 18px; font-weight: 600; margin: 0; color: var(--saas-text-primary, #1f2937); }
   .page-desc { font-size: 13px; color: var(--saas-text-tertiary, #9ca3af); }
 }
-.table-mode { flex: 1; overflow: auto; }
-.table-toolbar { display: flex; align-items: center; gap: 8px; padding: 10px 16px; background: var(--saas-bg-card, #fff); border-bottom: 1px solid var(--saas-border-light, #e5e7eb); }
-.ds-name { font-family: 'SF Mono', 'Consolas', monospace; font-weight: 600; color: var(--saas-primary-dark, #2563eb); font-size: 12px; }
+.table-mode { flex: 1; min-height: 0; overflow: hidden; }
+.ds-name { font-family: inherit; font-weight: 600; color: var(--saas-primary-dark, #2563eb); font-size: 12px; }
 .excel-mode { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-.excel-toolbar { display: flex; align-items: center; gap: 10px; padding: 10px 24px; background: var(--saas-bg-card, #fff); border-bottom: 1px solid var(--saas-border-light, #e5e7eb); .dirty-hint { font-size: 12px; color: var(--el-color-warning); margin-left: 8px; } }
 .excel-container { flex: 1; position: relative; }
 .excel-loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: rgba(255,255,255,0.85); z-index: 10; color: var(--saas-text-tertiary, #9ca3af); }
 .luckysheet-host { width: 100%; height: 100%; }

@@ -1,23 +1,16 @@
 <template>
   <div class="sdrg-page">
-    <div class="sdrg-container">
-      <!-- 页头 -->
-      <div class="section-header">
-        <div class="section-title-group">
-          <h3>SDRG 撰写</h3>
-          <span class="section-desc">Study Data Reviewer's Guide 章节编辑与导出</span>
-        </div>
-        <div class="header-actions">
-          <el-button type="primary" :loading="exporting" @click="exportSdrg" round>
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" class="btn-icon">
-              <path d="M8 2V10M8 10L5 7M8 10L11 7M2 12V13C2 13.6 2.4 14 3 14H13C13.6 14 14 13.6 14 13V12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            导出 Word
-          </el-button>
-        </div>
+    <div class="table-actions table-actions--end">
+      <div class="ws-btn-group">
+        <el-button size="small" type="primary" :loading="exporting" @click="exportSdrg">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" class="btn-icon">
+            <path d="M8 2V10M8 10L5 7M8 10L11 7M2 12V13C2 13.6 2.4 14 3 14H13C13.6 14 14 13.6 14 13V12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          导出 Word
+        </el-button>
       </div>
-
-      <!-- 统计卡片 -->
+    </div>
+    <div class="sdrg-container">
       <div v-if="!loading && sections.length > 0" class="stats-row">
         <div class="stat-card">
           <div class="stat-icon variant-primary">
@@ -70,7 +63,7 @@
         </div>
         <h4>暂无章节数据</h4>
         <p>加载 SDRG 章节时出错，请刷新重试</p>
-        <el-button type="primary" round @click="loadSections">重新加载</el-button>
+        <el-button size="small" type="primary" @click="loadSections">重新加载</el-button>
       </div>
 
       <!-- 主编辑区：左导航 + 右编辑 -->
@@ -239,12 +232,13 @@
                   </div>
                 </div>
                 <div class="editor-actions">
-                  <el-button
-                    type="primary"
-                    :loading="currentSection._saving"
-                    @click="saveSection(currentSection)"
-                    round
-                  >
+                  <div class="ws-btn-group">
+                    <el-button
+                      size="small"
+                      type="primary"
+                      :loading="currentSection._saving"
+                      @click="saveSection(currentSection)"
+                    >
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" class="btn-icon">
                       <path d="M13 5V13C13 13.6 12.6 14 12 14H4C3.4 14 3 13.6 3 13V3C3 2.4 3.4 2 4 2H10L13 5Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                       <path d="M10 2V5H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -252,6 +246,7 @@
                     </svg>
                     保存章节
                   </el-button>
+                  </div>
                   <span v-if="currentSection.updatedBy" class="update-meta">
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                       <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1"/>
@@ -447,39 +442,19 @@ onBeforeUnmount(() => {
 
 <style scoped lang="less">
 .sdrg-page {
-  padding: var(--saas-content-padding);
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--saas-topbar-height, 64px));
+  background: var(--saas-bg-page);
 }
 
 .sdrg-container {
+  flex: 1;
+  overflow: auto;
+  padding: var(--saas-content-padding);
   max-width: var(--saas-content-max-width);
   margin: 0 auto;
-}
-
-/* ===== 页头 ===== */
-.section-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: var(--saas-space-5);
-
-  .section-title-group {
-    h3 {
-      font-size: var(--saas-text-xl);
-      font-weight: var(--saas-font-bold);
-      color: var(--saas-text-primary);
-      margin: 0 0 var(--saas-space-1) 0;
-    }
-    .section-desc {
-      font-size: var(--saas-text-sm);
-      color: var(--saas-text-secondary);
-    }
-  }
-
-  .header-actions {
-    display: flex;
-    gap: var(--saas-space-2);
-    flex-shrink: 0;
-  }
+  width: 100%;
 }
 
 /* ===== 统计卡片 ===== */

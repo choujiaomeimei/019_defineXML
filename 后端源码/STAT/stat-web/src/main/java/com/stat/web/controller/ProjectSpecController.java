@@ -20,7 +20,12 @@ import com.stat.dal.po.CodelistDataPO;
 import com.stat.dal.po.ProjectConfigPO;
 import org.springframework.jdbc.core.JdbcTemplate;
 import com.stat.service.ProjectSpecService;
+import com.stat.service.ProjectFilePathResolver;
+import com.stat.service.CodelistExtractionResult;
+import com.stat.service.CodelistExtractionService;
+import com.stat.common.security.RequireProjectAccess;
 import com.stat.common.security.UserContext;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.streaming.SXSSFWorkbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -31,6 +36,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.interceptor.TransactionAspectSupport;
 
 import jakarta.annotation.Resource;
 import org.springframework.beans.factory.annotation.Value;
@@ -38,7 +45,9 @@ import java.io.*;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 项目Spec数据控制器
@@ -48,6 +57,7 @@ import java.util.concurrent.TimeUnit;
 public class ProjectSpecController {
     
     private static final Logger logger = LoggerFactory.getLogger(ProjectSpecController.class);
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     
     @Resource
     private ProjectSpecService projectSpecService;
@@ -78,6 +88,12 @@ public class ProjectSpecController {
 
     @Resource
     private JdbcTemplate jdbcTemplate;
+
+    @Resource
+    private ProjectFilePathResolver pathResolver;
+
+    @Resource
+    private CodelistExtractionService codelistExtractionService;
 
     @Value("${app.upload.path:C:/Project_Web/019_defineXML/uploads}")
     private String uploadBasePath;
@@ -565,100 +581,164 @@ public class ProjectSpecController {
         }
     }
 
-    @PostMapping("/extract-p21-fields/{projectId}")
-    public CommonResult<String> extractP21Fields(@PathVariable String projectId) {
+    @PostMapping("/extract-xpt-metadata/{projectId}")
+    public CommonResult<Map<String, Object>> extractXptMetadata(@PathVariable String projectId) {
         try {
             String username = UserContext.getUsername();
-            List<ProjectSpecPO> specList = projectSpecMapper.selectByProjectId(projectId, username);
-
-            // ── Step 1: Extract Data Type / Length / Sig Digits / Format from XPT ──
             String pythonExec = findPythonExec();
-            int xptUpdated = 0;
-            if (pythonExec != null) {
-                String script = pythonPath + "/define/var_xpt_metadata.py";
-                if (new File(script).exists()) {
-                    ProcessBuilder pb = new ProcessBuilder(pythonExec, script);
-                    pb.directory(new File(pythonPath + "/define"));
-                    pb.redirectErrorStream(true);
-                    Map<String, String> env = pb.environment();
-                    env.put("PROJECT_ID", projectId);
-                    env.put("PYTHONIOENCODING", "utf-8");
-                    env.put("PYTHON_BASE_PATH", pythonPath);
-                    env.put("UPLOAD_BASE_PATH", uploadBasePath);
-                    env.put("DATA_PATH", uploadBasePath + "/" + projectId + "/xpt");
-                    if (username != null && !username.isEmpty()) {
-                        env.put("USERNAME_CONTEXT", username);
-                    }
-                    Process process = pb.start();
-                    try (BufferedReader reader = new BufferedReader(
-                            new InputStreamReader(process.getInputStream(), "UTF-8"))) {
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            logger.info("[var-xpt] {}", line);
+            if (pythonExec == null) {
+                return CommonResult.failed("未找到可用的 Python，无法提取 XPT 元数据");
+            }
+
+            String script = pythonPath + "/define/var_xpt_metadata.py";
+            if (!new File(script).exists()) {
+                return CommonResult.failed("XPT 元数据提取脚本不存在: " + script);
+            }
+
+            String standardType = pathResolver.resolveStandardType(projectId, null);
+            ProcessBuilder pb = new ProcessBuilder(pythonExec, script);
+            pb.directory(new File(pythonPath + "/define"));
+            pb.redirectErrorStream(true);
+            Map<String, String> env = pb.environment();
+            env.put("PROJECT_ID", projectId);
+            env.put("PYTHONIOENCODING", "utf-8");
+            env.put("PYTHON_BASE_PATH", pythonPath);
+            env.put("DATA_PATH", pathResolver.xptDirectory(projectId, standardType).toString());
+            if (username != null && !username.isEmpty()) {
+                env.put("USERNAME_CONTEXT", username);
+            }
+
+            Process process = pb.start();
+            AtomicReference<String> resultJson = new AtomicReference<>();
+            CompletableFuture<Void> outputReader = CompletableFuture.runAsync(() -> {
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        if (line.startsWith("[RESULT] ")) {
+                            resultJson.set(line.substring("[RESULT] ".length()));
+                        } else {
+                            logger.debug("[var-xpt] {}", line);
                         }
                     }
-                    boolean finished = process.waitFor(120, TimeUnit.SECONDS);
-                    if (!finished) process.destroy();
-                    int exitCode = finished ? process.exitValue() : -1;
-                    if (exitCode == 0) {
-                        logger.info("[extract-p21] XPT metadata extraction succeeded for {}", projectId);
-                        xptUpdated = 1;
-                    } else {
-                        logger.warn("[extract-p21] XPT metadata script exited with {}", exitCode);
-                    }
-                } else {
-                    logger.warn("[extract-p21] var_xpt_metadata.py not found at {}", script);
+                } catch (IOException e) {
+                    logger.warn("读取XPT提取进程输出失败", e);
                 }
+            });
+
+            boolean finished = process.waitFor(120, TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                return CommonResult.failed("XPT 元数据提取超时");
+            }
+            outputReader.get(5, TimeUnit.SECONDS);
+
+            Map<String, Object> detail = resultJson.get() != null
+                    ? OBJECT_MAPPER.readValue(resultJson.get(), Map.class)
+                    : new LinkedHashMap<>();
+            int updated = numberValue(detail.get("updated"));
+            int skipped = numberValue(detail.get("skipped"));
+            boolean partial = Boolean.TRUE.equals(detail.get("partial"));
+            detail.put("message", String.format(
+                    "%s：更新 %d 条，跳过 %d 条",
+                    partial ? "XPT元数据部分提取成功" : "XPT元数据提取成功",
+                    updated, skipped));
+
+            if (process.exitValue() != 0 || updated == 0) {
+                String errors = detail.get("errors") != null ? detail.get("errors").toString() : "";
+                return CommonResult.failed(errors.isEmpty()
+                        ? "XPT 元数据未更新，请检查文件和变量匹配关系"
+                        : "XPT 元数据提取失败: " + errors);
             }
 
-            // Reload spec list to pick up XPT-updated fields
-            specList = projectSpecMapper.selectByProjectId(projectId, username);
+            triggerSpecSync(projectId);
+            return CommonResult.success(detail);
+        } catch (Exception e) {
+            logger.error("提取XPT元数据失败", e);
+            return CommonResult.failed("XPT元数据提取失败: " + e.getMessage());
+        }
+    }
 
-            // ── Step 2: Extract Mandatory / Role / Has No Data from P21 ──
+    @PostMapping("/extract-p21-fields/{projectId}")
+    @Transactional(rollbackFor = Exception.class)
+    public CommonResult<Map<String, Object>> extractP21Fields(@PathVariable String projectId) {
+        try {
             String[] loadErr = {null};
             Map<String, Map<String, String>> p21Map = loadP21VariablesMap(projectId, loadErr);
+            if (p21Map == null) {
+                return CommonResult.failed(loadErr[0] != null ? loadErr[0] : "P21文件读取失败");
+            }
 
+            String username = UserContext.getUsername();
+            List<ProjectSpecPO> specList = projectSpecMapper.selectByProjectId(projectId, username);
+            Set<String> specKeys = new LinkedHashSet<>();
             int matchCount = 0;
-            if (p21Map != null) {
-                for (ProjectSpecPO spec : specList) {
-                    String key = (spec.getDomain() != null ? spec.getDomain().toUpperCase() : "")
-                            + "|" + (spec.getVariable() != null ? spec.getVariable().toUpperCase() : "");
-                    Map<String, String> p21Fields = p21Map.get(key);
-                    if (p21Fields == null) continue;
 
-                    boolean changed = false;
-                    String val;
-                    val = p21Fields.get("mandatory");
-                    if (val != null && !val.isEmpty()) { spec.setMandatory(val); changed = true; }
-                    val = p21Fields.get("role");
-                    if (val != null && !val.isEmpty()) { spec.setRole(val); changed = true; }
-                    val = p21Fields.get("hasNoData");
-                    if (val != null && !val.isEmpty()) { spec.setHasNoData(val); changed = true; }
+            for (ProjectSpecPO spec : specList) {
+                String key = (spec.getDomain() != null ? spec.getDomain().toUpperCase() : "")
+                        + "|" + (spec.getVariable() != null ? spec.getVariable().toUpperCase() : "");
+                specKeys.add(key);
+                Map<String, String> p21Fields = p21Map.get(key);
+                if (p21Fields == null) continue;
 
-                    if (changed) {
-                        spec.setUpdatedTime(new java.util.Date());
-                        spec.setUpdatedBy("p21_extract");
-                        projectSpecMapper.updateById(spec);
-                        matchCount++;
-                    }
+                boolean changed = false;
+                String val = p21Fields.get("mandatory");
+                if (val != null && !val.isEmpty()) { spec.setMandatory(val); changed = true; }
+                val = p21Fields.get("role");
+                if (val != null && !val.isEmpty()) { spec.setRole(val); changed = true; }
+                val = p21Fields.get("hasNoData");
+                if (val != null && !val.isEmpty()) { spec.setHasNoData(val); changed = true; }
+
+                if (changed) {
+                    spec.setUpdatedTime(new java.util.Date());
+                    spec.setUpdatedBy(appendUpdateSource(spec.getUpdatedBy(), "p21_extract"));
+                    projectSpecMapper.updateById(spec);
+                    matchCount++;
                 }
             }
 
-            logger.info("P21字段提取完成: projectId={}, XPT提取={}, P21匹配更新={}", projectId, xptUpdated > 0 ? "成功" : "跳过", matchCount);
-            triggerSpecSync(projectId);
-
-            StringBuilder msg = new StringBuilder();
-            msg.append("提取完成：Data Type/Length/Sig Digits/Format 已从XPT提取");
-            if (p21Map != null) {
-                msg.append("，Mandatory/Role/Has No Data 从P21匹配更新 ").append(matchCount).append(" 条");
-            } else {
-                msg.append("（P21未上传，Mandatory/Role/Has No Data 未填充）");
+            if (matchCount == 0) {
+                return CommonResult.failed("P21与当前项目Spec没有匹配变量，请检查Dataset和Variable列");
             }
-            return CommonResult.success(msg.toString());
+
+            Set<String> specOnly = new LinkedHashSet<>(specKeys);
+            specOnly.removeAll(p21Map.keySet());
+            Set<String> p21Only = new LinkedHashSet<>(p21Map.keySet());
+            p21Only.removeAll(specKeys);
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("matched", matchCount);
+            result.put("specOnlyCount", specOnly.size());
+            result.put("p21OnlyCount", p21Only.size());
+            result.put("specOnly", new ArrayList<>(specOnly));
+            result.put("p21Only", new ArrayList<>(p21Only));
+            result.put("message", String.format(
+                    "P21字段提取完成：匹配更新 %d 条，Spec独有 %d 条，P21独有 %d 条",
+                    matchCount, specOnly.size(), p21Only.size()));
+
+            triggerSpecSync(projectId);
+            return CommonResult.success(result);
         } catch (Exception e) {
             logger.error("提取P21字段失败", e);
-            return CommonResult.failed("提取失败: " + e.getMessage());
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+            return CommonResult.failed("P21字段提取失败: " + e.getMessage());
         }
+    }
+
+    private int numberValue(Object value) {
+        if (value instanceof Number number) return number.intValue();
+        if (value == null) return 0;
+        try {
+            return Integer.parseInt(value.toString());
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
+
+    private String appendUpdateSource(String existing, String source) {
+        if (existing == null || existing.isBlank()) return source;
+        if (Arrays.asList(existing.split(",")).contains(source)) return existing;
+        return existing + "," + source;
     }
 
     @GetMapping("/compare-p21/{projectId}")
@@ -722,7 +802,12 @@ public class ProjectSpecController {
             return null;
         }
         FileUploadRecord latest = p21Files.get(0);
-        File p21File = new File(latest.getFilePath());
+        String p21Path = latest.getWorkspaceFilePath() != null && !latest.getWorkspaceFilePath().isBlank()
+                ? latest.getWorkspaceFilePath()
+                : pathResolver.workspaceFile(projectId,
+                    pathResolver.resolveStandardType(projectId, latest.getStandardType()),
+                    FileUploadRecord.FileCategory.P21_SPEC, latest.getOriginalName()).toString();
+        File p21File = new File(p21Path);
         if (!p21File.exists()) {
             errOut[0] = "P21文件不存在于磁盘: " + latest.getFilePath();
             return null;
@@ -840,22 +925,25 @@ public class ProjectSpecController {
     }
 
     @PostMapping("/extract-pages/{projectId}")
+    @Transactional(rollbackFor = Exception.class)
     public CommonResult<String> extractPages(@PathVariable String projectId) {
         try {
             String username = UserContext.getUsername();
-            List<PagesDataPO> pagesList = pagesDataMapper.selectByProjectId(projectId, username);
+            String standardType = pathResolver.resolveStandardType(projectId, null);
+            String outputDir = pathResolver.projectSpecDirectory(projectId, standardType).toString();
+            String syncedSpec = projectSpecService.syncSpecToFile(projectId, outputDir);
+            if (syncedSpec == null || !new File(syncedSpec).isFile()) {
+                return CommonResult.failed("无法生成数据库最新Spec，请先检查项目Spec文件");
+            }
 
-            boolean ranPipeline = false;
+            String pipelineResult = runPagesPipeline(projectId, username, syncedSpec);
+            if (pipelineResult != null) {
+                return CommonResult.failed(pipelineResult);
+            }
+
+            List<PagesDataPO> pagesList = pagesDataMapper.selectByProjectId(projectId, username);
             if (pagesList == null || pagesList.isEmpty()) {
-                String pipelineResult = runPagesPipeline(projectId, username);
-                if (pipelineResult != null) {
-                    return CommonResult.failed(pipelineResult);
-                }
-                ranPipeline = true;
-                pagesList = pagesDataMapper.selectByProjectId(projectId, username);
-                if (pagesList == null || pagesList.isEmpty()) {
-                    return CommonResult.failed("Pages 提取脚本已运行但未产生数据，请检查 aCRF 和 Spec 文件");
-                }
+                return CommonResult.failed("Pages 提取脚本未产生数据，原有Pages字段未修改");
             }
 
             Map<String, String> pagesMap = new HashMap<>();
@@ -879,51 +967,43 @@ public class ProjectSpecController {
             List<ProjectSpecPO> specList = projectSpecMapper.selectByProjectId(projectId, username);
 
             int clearCount = 0;
+            int unchangedCount = 0;
             int skippedSupp = 0;
-            for (ProjectSpecPO spec : specList) {
-                String dom = spec.getDomain() != null ? spec.getDomain().toUpperCase().trim() : "";
-                if (dom.startsWith("SUPP")) { skippedSupp++; continue; }
-                String src = spec.getSource() != null ? spec.getSource().trim() : "";
-                if (src.equalsIgnoreCase("Investigator")) {
-                    spec.setPages(null);
-                    spec.setUpdatedTime(new java.util.Date());
-                    spec.setUpdatedBy("pages_extract");
-                    projectSpecMapper.updateById(spec);
-                    clearCount++;
-                }
-            }
-
             int matchCount = 0;
             int skippedNonInv = 0;
             for (ProjectSpecPO spec : specList) {
                 String dom = spec.getDomain() != null ? spec.getDomain().toUpperCase().trim() : "";
-                if (dom.startsWith("SUPP")) continue;
+                if (dom.startsWith("SUPP")) { skippedSupp++; continue; }
                 String src = spec.getSource() != null ? spec.getSource().trim() : "";
+                String key = dom + "|" + (spec.getVariable() != null ? spec.getVariable().toUpperCase().trim() : "");
                 if (!src.equalsIgnoreCase("Investigator")) {
-                    String key = dom + "|" + (spec.getVariable() != null ? spec.getVariable().toUpperCase().trim() : "");
                     if (pagesMap.containsKey(key)) skippedNonInv++;
                     continue;
                 }
-                String key = dom + "|" + (spec.getVariable() != null ? spec.getVariable().toUpperCase().trim() : "");
                 String pages = pagesMap.get(key);
+                if (Objects.equals(spec.getPages(), pages)) {
+                    unchangedCount++;
+                    if (pages != null) matchCount++;
+                    continue;
+                }
+                if (pages == null && spec.getPages() != null && !spec.getPages().isBlank()) {
+                    clearCount++;
+                }
+                spec.setPages(pages);
+                spec.setUpdatedTime(new java.util.Date());
+                spec.setUpdatedBy(appendUpdateSource(spec.getUpdatedBy(), "pages_extract"));
+                projectSpecMapper.updateById(spec);
                 if (pages != null) {
-                    spec.setPages(pages);
-                    spec.setUpdatedTime(new java.util.Date());
-                    spec.setUpdatedBy("pages_extract");
-                    projectSpecMapper.updateById(spec);
                     matchCount++;
                 }
             }
 
-            logger.info("Pages字段提取完成: projectId={}, total={}, domainVar={}, cleared={}, matched={}, skippedNonInv={}, skippedSupp={}",
-                    projectId, totalCount, domainVarCount, clearCount, matchCount, skippedNonInv, skippedSupp);
+            logger.info("Pages字段提取完成: projectId={}, total={}, domainVar={}, cleared={}, matched={}, unchanged={}, skippedNonInv={}, skippedSupp={}",
+                    projectId, totalCount, domainVarCount, clearCount, matchCount, unchangedCount, skippedNonInv, skippedSupp);
             triggerSpecSync(projectId);
 
             StringBuilder msg = new StringBuilder();
-            if (ranPipeline) {
-                msg.append("已自动运行 Pages 提取脚本。");
-            }
-            msg.append(String.format("Pages 数据共 %d 条（Domain_Variable %d 条），Source=Investigator 匹配填充 %d 条",
+            msg.append(String.format("已按最新aCRF和Spec重新提取。Pages 数据共 %d 条（Domain_Variable %d 条），Source=Investigator 匹配填充 %d 条",
                     totalCount, domainVarCount, matchCount));
             if (skippedNonInv > 0) {
                 msg.append(String.format("，跳过非 Investigator 变量 %d 条", skippedNonInv));
@@ -934,12 +1014,14 @@ public class ProjectSpecController {
             return CommonResult.success(msg.toString());
         } catch (Exception e) {
             logger.error("提取Pages字段失败", e);
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
             return CommonResult.failed("提取失败: " + e.getMessage());
         }
     }
 
-    private String runPagesPipeline(String projectId, String username) {
-        File annotsFile = new File(uploadBasePath + "/" + projectId + "/output/Annots2.xlsx");
+    private String runPagesPipeline(String projectId, String username, String syncedSpecPath) {
+        String standardType = pathResolver.resolveStandardType(projectId, null);
+        File annotsFile = pathResolver.acrfAnnotations(projectId, standardType).toFile();
         if (!annotsFile.exists()) {
             return "未找到 aCRF 注释文件 (Annots2.xlsx)，请先上传 aCRF 并完成处理";
         }
@@ -974,30 +1056,42 @@ public class ProjectSpecController {
             pb.redirectErrorStream(true);
             Map<String, String> env = pb.environment();
             env.put("PYTHONIOENCODING", "utf-8");
+            env.put("ANNOTS_PATH", annotsFile.getAbsolutePath());
+            env.put("DATA_PATH", pathResolver.xptDirectory(projectId, standardType).toString());
+            env.put("SPEC_PATH", syncedSpecPath);
+            env.put("OUTPUT_PATH", pathResolver.extractionOutputDirectory(projectId, standardType).toString());
+            env.put("VLM_PATH", pathResolver.extractionOutputDirectory(projectId, standardType)
+                    .resolve("vlm_codelists.xlsx").toString());
             if (username != null && !username.isEmpty()) {
                 env.put("USERNAME_CONTEXT", username);
             }
 
             Process process = pb.start();
-            StringBuilder output = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream(), "UTF-8"))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    output.append(line).append("\n");
+            CompletableFuture<String> outputReader = CompletableFuture.supplyAsync(() -> {
+                StringBuilder output = new StringBuilder();
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        output.append(line).append('\n');
+                    }
+                } catch (IOException e) {
+                    throw new java.io.UncheckedIOException(e);
                 }
-            }
+                return output.toString();
+            });
 
             boolean finished = process.waitFor(300, TimeUnit.SECONDS);
             if (!finished) {
-                process.destroy();
+                process.destroyForcibly();
                 return "Pages 提取脚本执行超时";
             }
+            String output = outputReader.get(5, TimeUnit.SECONDS);
             int exitCode = process.exitValue();
             if (exitCode != 0) {
                 return "Pages 提取脚本执行失败 (exit " + exitCode + "): " + output;
             }
-            logger.info("Pages pipeline executed for project {}: {}", projectId, output.toString().trim());
+            logger.info("Pages pipeline executed for project {}: {}", projectId, output.trim());
             return null;
         } catch (Exception e) {
             return "运行 Pages 提取脚本异常: " + e.getMessage();
@@ -1008,8 +1102,20 @@ public class ProjectSpecController {
      * Extract Variables-level codelists.
      * All Terms come from XPT data. NCI codes are matched by looking up each Term in ct_term.
      */
+    @RequireProjectAccess("projectId")
     @PostMapping("/extract-var-codelist/{projectId}")
-    public CommonResult<Map<String, Object>> extractVarCodelist(@PathVariable String projectId) {
+    public CommonResult<CodelistExtractionResult> extractVarCodelist(@PathVariable String projectId) {
+        try {
+            CodelistExtractionResult result = codelistExtractionService.extract(
+                    projectId, UserContext.getUsername(), CodelistExtractionService.Scope.VARIABLES);
+            return CommonResult.success(result);
+        } catch (Exception e) {
+            logger.error("统一提取 Variables Codelist 失败", e);
+            return CommonResult.failed("提取失败: " + e.getMessage());
+        }
+    }
+
+    private CommonResult<Map<String, Object>> extractVarCodelistLegacy(String projectId) {
         try {
             String username = UserContext.getUsername();
             logger.info("[extract-var-codelist] projectId={}, username={}", projectId, username);
@@ -1321,7 +1427,8 @@ public class ProjectSpecController {
         List<String[]> pairs = new ArrayList<>();
         if (pythonExec == null) return pairs;
         try {
-            String xptDir = uploadBasePath + "/" + projectId + "/xpt";
+            String xptDir = pathResolver.xptDirectory(
+                    projectId, pathResolver.resolveStandardType(projectId, null)).toString();
             java.io.File dir = new java.io.File(xptDir);
             if (!dir.exists()) return pairs;
             java.io.File xptFile = findXptFile(dir, domain);
@@ -1423,7 +1530,7 @@ public class ProjectSpecController {
         Map<String, List<Map<String, String>>> result = new HashMap<>();
         try {
             List<Map<String, Object>> files = jdbcTemplate.queryForList(
-                    "SELECT file_path FROM file_upload_records WHERE project_id = ? AND file_category = 'EDC_CODELIST' ORDER BY upload_time DESC LIMIT 1",
+                    "SELECT COALESCE(workspace_file_path, file_path) AS file_path FROM file_upload_records WHERE project_id = ? AND file_category = 'EDC_CODELIST' AND deleted = 0 ORDER BY upload_time DESC LIMIT 1",
                     projectId);
             if (files.isEmpty()) return result;
             String filePath = files.get(0).get("file_path").toString();
@@ -1505,12 +1612,14 @@ public class ProjectSpecController {
     
 
     private java.io.File findXptFile(java.io.File dir, String domain) {
-        if (domain == null || domain.isEmpty()) return null;
+        if (dir == null || !dir.isDirectory() || domain == null || domain.isEmpty()) return null;
         java.io.File f = new java.io.File(dir, domain.toLowerCase() + ".xpt");
         if (f.exists()) return f;
         f = new java.io.File(dir, domain.toUpperCase() + ".xpt");
         if (f.exists()) return f;
-        for (java.io.File file : dir.listFiles()) {
+        java.io.File[] files = dir.listFiles();
+        if (files == null) return null;
+        for (java.io.File file : files) {
             if (file.getName().toLowerCase().endsWith("_" + domain.toLowerCase() + ".xpt")) return file;
         }
         return null;
@@ -1670,7 +1779,8 @@ public class ProjectSpecController {
 
     private void triggerSpecSync(String projectId) {
         try {
-            String outputDir = uploadBasePath + "/" + projectId + "/output";
+            String outputDir = pathResolver.projectSpecDirectory(
+                    projectId, pathResolver.resolveStandardType(projectId, null)).toString();
             projectSpecService.syncSpecToFile(projectId, outputDir);
         } catch (Exception e) {
             logger.warn("Spec同步文件生成失败(不影响主流程): {}", e.getMessage());

@@ -1,21 +1,25 @@
 <template>
   <div class="define-editor-page">
-    <div class="editor-toolbar">
+    <div class="editor-toolbar table-actions">
       <div class="toolbar-left">
-        <el-button size="small" @click="goBack" round>
-          <el-icon><ArrowLeft /></el-icon> 返回
-        </el-button>
+        <div class="ws-btn-group">
+          <el-button size="small" @click="goBack">
+            <el-icon><ArrowLeft /></el-icon> 返回
+          </el-button>
+        </div>
         <span class="file-name-display">{{ fileName || '加载中...' }}</span>
         <el-tag v-if="hasUnsavedChanges" type="warning" size="small" effect="plain">未保存</el-tag>
         <el-tag v-if="saveSuccess" type="success" size="small" effect="plain">已保存</el-tag>
       </div>
       <div class="toolbar-right">
-        <el-button size="small" type="primary" :loading="saving" @click="saveData" :disabled="!sheetLoaded" round>
-          <el-icon><DocumentChecked /></el-icon> 保存
-        </el-button>
-        <el-button size="small" type="success" @click="exportFile" :disabled="!sheetLoaded" round>
-          <el-icon><Download /></el-icon> 导出 xlsx
-        </el-button>
+        <div class="ws-btn-group">
+          <el-button size="small" type="primary" :loading="saving" @click="saveData" :disabled="!sheetLoaded">
+            <el-icon><DocumentChecked /></el-icon> 保存
+          </el-button>
+          <el-button size="small" @click="exportFile" :disabled="!sheetLoaded">
+            <el-icon><Download /></el-icon> 导出 xlsx
+          </el-button>
+        </div>
       </div>
     </div>
     <div class="editor-container">

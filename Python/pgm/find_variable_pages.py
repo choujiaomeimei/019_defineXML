@@ -25,12 +25,16 @@ def parse_where_clause(where_clause):
     return None, None
 
 
-def find_variable_in_annotations(variable, value, annots_df):
+def find_variable_in_annotations(variable, value, annots_df, domain=None, page_domains=None):
     if annots_df is None or annots_df.empty:
         return []
 
     matches = []
     for _, row in annots_df.iterrows():
+        if domain and page_domains is not None:
+            domains = page_domains.get(row.get('page'), set())
+            if domain.upper() not in domains:
+                continue
         content = str(row.get('Contents', '')).strip()
         if not content:
             continue
@@ -58,12 +62,15 @@ def find_variable_in_annotations(variable, value, annots_df):
     return matches
 
 
-def find_domain_variable_in_annotations(domain, variable_name, supp_flag, annots_df):
+def find_domain_variable_in_annotations(domain, variable_name, supp_flag, annots_df, page_domains):
     if annots_df is None or annots_df.empty:
         return []
 
     matches = []
     for _, row in annots_df.iterrows():
+        domains = page_domains.get(row.get('page'), set())
+        if domain.upper() not in domains:
+            continue
         content = str(row.get('Contents', '')).strip()
         if not content:
             continue
@@ -107,8 +114,55 @@ def _find_col(df: pd.DataFrame, aliases: list) -> Optional[str]:
     return None
 
 
+def build_page_domain_map(annots_df: pd.DataFrame, domains_df: pd.DataFrame) -> Dict[object, set]:
+    """
+    Infer the SDTM domain for each annotated page.
+    Strong evidence (AE.VAR, SUPPAE.VAR, "AE (...)") wins. If absent, use
+    variables that occur in exactly one project domain.
+    """
+    known_domains = {
+        str(value).upper().strip()
+        for value in domains_df['_domain'].dropna()
+        if str(value).strip()
+    }
+    variable_domains: Dict[str, set] = {}
+    for _, row in domains_df.iterrows():
+        domain = str(row['_domain']).upper().strip()
+        variable = str(row['_var_name']).upper().strip()
+        if domain and variable and variable != 'NAN':
+            variable_domains.setdefault(variable, set()).add(domain)
+
+    page_domains: Dict[object, set] = {}
+    for page, group in annots_df.groupby('page'):
+        contents = [str(value).upper().strip() for value in group['Contents'].dropna()]
+        strong = set()
+        for content in contents:
+            for supp_domain, normal_domain in re.findall(
+                    r'(?<![A-Z0-9])(?:SUPP([A-Z]{2})|([A-Z]{2}))\s*\.', content):
+                candidate = supp_domain or normal_domain
+                if candidate in known_domains:
+                    strong.add(candidate)
+            for candidate in re.findall(r'(?<![A-Z0-9])([A-Z]{2})\s*[\(（]', content):
+                if candidate in known_domains:
+                    strong.add(candidate)
+
+        if strong:
+            page_domains[page] = strong
+            continue
+
+        inferred = set()
+        for content in contents:
+            for token in re.findall(r'(?<![A-Z0-9_])([A-Z][A-Z0-9_]{1,31})(?![A-Z0-9_])', content):
+                domains = variable_domains.get(token, set())
+                if len(domains) == 1:
+                    inferred.update(domains)
+        page_domains[page] = inferred
+
+    return page_domains
+
+
 def extract_pages(annots_path: str, spec_path: str, vlm_path: str = None,
-                  output_path: str = None) -> pd.DataFrame:
+                  output_path: str = None, vlm_data: pd.DataFrame = None) -> pd.DataFrame:
     """
     Extract variable-to-page mappings.
 
@@ -122,45 +176,49 @@ def extract_pages(annots_path: str, spec_path: str, vlm_path: str = None,
         DataFrame with columns: Type, Domain/Dataset, Variable, SUPP,
         Where_Clause, Parsed_Variable, Parsed_Value, Found_Page, Found_Content
     """
-    annots_df = None
-    domains_df = None
-    vlm_df = None
+    vlm_df = vlm_data
 
     # --- Read annotations ---
-    try:
-        annots_df = pd.read_excel(annots_path)
-        print(f"Annots2.xlsx loaded: {len(annots_df)} rows")
-    except Exception as e:
-        print(f"Failed to read Annots2: {e}")
+    if not annots_path or not Path(annots_path).is_file():
+        raise FileNotFoundError(f"Annots2 file not found: {annots_path}")
+    annots_df = pd.read_excel(annots_path)
+    if 'page' not in annots_df.columns or 'Contents' not in annots_df.columns:
+        raise ValueError("Annots2 must contain page and Contents columns")
+    if annots_df.empty:
+        raise ValueError("Annots2 contains no annotations")
+    print(f"Annots2.xlsx loaded: {len(annots_df)} rows")
 
     # --- Read spec (all domain sheets) ---
-    try:
-        skip_sheets = {'toc', 'codelists', 'vlm', 'supp', 'annots', 'dm_bk'}
-        excel_file = pd.ExcelFile(spec_path)
-        parts = []
-        for sheet_name in excel_file.sheet_names:
-            if sheet_name.lower() in skip_sheets:
-                continue
-            if sheet_name.upper().startswith('SUPP'):
-                continue
-            df = excel_file.parse(sheet_name)
-            col_var = _find_col(df, ['Variable Name', 'Variable_Name', 'variable', 'Variable'])
-            if col_var is None:
-                continue
-            col_supp = _find_col(df, ['SUPP', 'supp'])
-            part = pd.DataFrame({
-                '_domain': sheet_name,
-                '_var_name': df[col_var],
-                '_supp': df[col_supp].fillna('N') if col_supp else 'N',
-            })
-            parts.append(part)
-        if parts:
-            domains_df = pd.concat(parts, ignore_index=True)
-    except Exception as e:
-        print(f"Failed to read spec: {e}")
+    if not spec_path or not Path(spec_path).is_file():
+        raise FileNotFoundError(f"Project Spec file not found: {spec_path}")
+    skip_sheets = {'toc', 'codelists', 'vlm', 'supp', 'annots', 'dm_bk'}
+    excel_file = pd.ExcelFile(spec_path)
+    parts = []
+    for sheet_name in excel_file.sheet_names:
+        if sheet_name.lower() in skip_sheets or sheet_name.upper().startswith('SUPP'):
+            continue
+        df = excel_file.parse(sheet_name)
+        col_var = _find_col(df, ['Variable Name', 'Variable_Name', 'variable', 'Variable'])
+        if col_var is None:
+            continue
+        col_supp = _find_col(df, ['SUPP', 'supp'])
+        part = pd.DataFrame({
+            '_domain': sheet_name,
+            '_var_name': df[col_var],
+            '_supp': df[col_supp].fillna('N') if col_supp else 'N',
+        })
+        parts.append(part)
+    if not parts:
+        raise ValueError("Project Spec contains no readable domain sheets")
+    domains_df = pd.concat(parts, ignore_index=True)
+    page_domains = build_page_domain_map(annots_df, domains_df)
+    pages_with_domain = sum(1 for domains in page_domains.values() if domains)
+    print(f"Domain context inferred for {pages_with_domain}/{len(page_domains)} annotated pages")
 
     # --- Read VLM ---
-    if vlm_path and Path(vlm_path).exists():
+    if vlm_df is not None:
+        print(f"VLM loaded from database: {len(vlm_df)} rows")
+    elif vlm_path and Path(vlm_path).exists():
         try:
             vlm_xf = pd.ExcelFile(vlm_path)
             if 'VLM' in vlm_xf.sheet_names:
@@ -171,26 +229,26 @@ def extract_pages(annots_path: str, spec_path: str, vlm_path: str = None,
 
     # --- Match domain variables ---
     domain_results: List[Dict] = []
-    if domains_df is not None and annots_df is not None:
-        for _, row in domains_df.iterrows():
-            domain = row['_domain']
-            variable_name = str(row['_var_name'])
-            supp_flag = str(row['_supp'])
-            if not variable_name or variable_name == 'nan':
-                continue
-            matches = find_domain_variable_in_annotations(domain, variable_name, supp_flag, annots_df)
-            for m in matches:
-                domain_results.append({
-                    'Type': 'Domain_Variable',
-                    'Dataset': domain,
-                    'Variable': variable_name,
-                    'SUPP': supp_flag,
-                    'Where_Clause': '',
-                    'Parsed_Variable': variable_name,
-                    'Parsed_Value': '',
-                    'Found_Page': m['page'],
-                    'Found_Content': m['content'],
-                })
+    for _, row in domains_df.iterrows():
+        domain = row['_domain']
+        variable_name = str(row['_var_name'])
+        supp_flag = str(row['_supp'])
+        if not variable_name or variable_name == 'nan':
+            continue
+        matches = find_domain_variable_in_annotations(
+            domain, variable_name, supp_flag, annots_df, page_domains)
+        for m in matches:
+            domain_results.append({
+                'Type': 'Domain_Variable',
+                'Dataset': domain,
+                'Variable': variable_name,
+                'SUPP': supp_flag,
+                'Where_Clause': '',
+                'Parsed_Variable': variable_name,
+                'Parsed_Value': '',
+                'Found_Page': m['page'],
+                'Found_Content': m['content'],
+            })
 
     # --- Match VLM Where Clauses ---
     vlm_results: List[Dict] = []
@@ -205,7 +263,10 @@ def extract_pages(annots_path: str, spec_path: str, vlm_path: str = None,
                 variable_name = row.get(var_col, '') if var_col else ''
                 var, val = parse_where_clause(where_clause)
                 if var and val:
-                    matches = find_variable_in_annotations(var, val, annots_df)
+                    matches = find_variable_in_annotations(
+                        var, val, annots_df,
+                        domain=str(dataset).upper().strip(),
+                        page_domains=page_domains)
                     for m in matches:
                         vlm_results.append({
                             'Type': 'VLM_WhereClause',

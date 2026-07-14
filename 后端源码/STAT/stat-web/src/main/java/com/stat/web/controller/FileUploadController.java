@@ -8,6 +8,7 @@ import com.stat.service.IFileUploadRecordService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashMap;
@@ -23,6 +24,7 @@ import java.util.UUID;
  * @since 2025-01-10
  */
 @RestController
+@ConditionalOnProperty(name = "app.legacy-file-upload.enabled", havingValue = "true")
 @RequestMapping("/file-upload")
 
 public class FileUploadController {

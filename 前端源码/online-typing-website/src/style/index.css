@@ -1,6 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-
 :root {
+  /* Typography: Family */
+  --saas-font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;
+  --saas-font-rules: var(--saas-font-family);
+  --el-font-family: var(--saas-font-family);
+
   /* Color: Primary */
   --saas-primary: #6366f1;
   --saas-primary-light: #818cf8;
@@ -87,9 +90,14 @@
   /* Layout */
   --saas-sidebar-width: 56px;
   --saas-sidebar-secondary-width: 260px;
+  --saas-rules-rail-width: 56px;
+  --saas-rules-drawer-width: 50vw;
   --saas-topbar-height: 64px;
   --saas-content-max-width: 1800px;
   --saas-content-padding: var(--saas-space-6) var(--saas-space-7);
+  --saas-domain-sidebar-width: 220px;
+  --saas-search-input-width: calc(var(--saas-domain-sidebar-width) - 2 * var(--saas-space-4));
+  --saas-col-dataset-width: 90px;
 
   /* Motion */
   --saas-transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -105,10 +113,11 @@
 html, body {
   height: 100%;
   margin: 0;
+  font-family: var(--saas-font-family);
 }
 
 #app {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--saas-font-family);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color: var(--saas-text-primary);
@@ -117,7 +126,6 @@ html, body {
   overflow: hidden;
   font-size: 0.875rem;
   line-height: 1.5;
-  letter-spacing: -0.01em;
 }
 
 ::-webkit-scrollbar {
@@ -173,4 +181,546 @@ html, body {
   border-radius: var(--saas-radius-lg);
   border: 1px solid var(--saas-border-light);
   box-shadow: var(--saas-shadow-xs);
+}
+
+/* Element Plus / 第三方组件字体统一 */
+.el-button,
+.el-input,
+.el-input__inner,
+.el-textarea__inner,
+.el-select,
+.el-table,
+.el-dialog,
+.el-drawer,
+.el-breadcrumb,
+.el-menu,
+.el-dropdown,
+.el-form-item__label,
+.el-radio-button__inner,
+.el-checkbox__label,
+.el-tag,
+.el-message,
+.el-notification,
+.el-popover,
+.el-popconfirm,
+.luckysheet-cell,
+.luckysheet-input-box,
+#luckysheet-icon-morebtn,
+.luckysheet-wa-editor {
+  font-family: var(--saas-font-family) !important;
+}
+
+/* Toast / 通知：避开右侧规则栏（须在 element-plus.css 之后加载） */
+.el-message,
+.el-notification {
+  --el-message-min-width: 280px;
+  max-width: min(360px, calc(100vw - var(--saas-rules-rail-width, 56px) - 32px));
+  left: auto !important;
+  right: calc(var(--saas-rules-rail-width, 56px) + 16px) !important;
+  transform: none !important;
+  border-radius: var(--saas-radius-md);
+  box-shadow: var(--saas-shadow-md);
+  z-index: 5000 !important;
+}
+
+.el-message {
+  --el-message-min-width: 280px;
+}
+
+/* Popconfirm / Popover 靠右时避免被规则栏遮挡 */
+.el-popper.is-light.el-popover,
+.el-popper.is-light.el-popconfirm {
+  max-width: min(420px, calc(100vw - var(--saas-rules-rail-width, 56px) - 32px));
+  z-index: 4000 !important;
+}
+
+/* Workspace 工具栏按钮组 */
+.ws-btn-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--saas-bg-page);
+  border: 1px solid var(--saas-border);
+  border-radius: var(--saas-radius-md);
+}
+
+.ws-btn-group .el-button {
+  height: 30px;
+  padding: 0 12px;
+  margin: 0;
+  font-size: var(--saas-text-sm);
+  font-weight: var(--saas-font-medium);
+  border: none;
+  border-radius: calc(var(--saas-radius-md) - 2px);
+  background: transparent;
+  color: var(--saas-text-secondary);
+  box-shadow: none;
+}
+
+.ws-btn-group .el-button + .el-button {
+  margin-left: 0;
+}
+
+.ws-btn-group .el-button:hover:not(:disabled) {
+  background: var(--saas-bg-hover);
+  color: var(--saas-text-primary);
+}
+
+.ws-btn-group .el-button.el-button--primary {
+  background: var(--saas-primary);
+  color: var(--saas-text-inverse);
+}
+
+.ws-btn-group .el-button.el-button--primary:hover:not(:disabled) {
+  background: var(--saas-primary-dark);
+  color: var(--saas-text-inverse);
+}
+
+.ws-btn-group--extract .el-button:hover:not(:disabled) {
+  background: var(--saas-warning-bg);
+  color: #92400e;
+}
+
+.ws-toolbar-sep {
+  width: 1px;
+  height: 24px;
+  background: var(--saas-border);
+  flex-shrink: 0;
+}
+
+.ws-mode-switch.el-radio-group {
+  display: inline-flex;
+  padding: 3px;
+  background: var(--saas-bg-page);
+  border: 1px solid var(--saas-border);
+  border-radius: var(--saas-radius-md);
+}
+
+.ws-mode-switch .el-radio-button__inner {
+  height: 30px;
+  line-height: 28px;
+  padding: 0 14px;
+  font-size: var(--saas-text-sm);
+  font-weight: var(--saas-font-medium);
+  border: none !important;
+  border-radius: calc(var(--saas-radius-md) - 2px) !important;
+  background: transparent;
+  color: var(--saas-text-secondary);
+  box-shadow: none !important;
+}
+
+.ws-mode-switch .el-radio-button:first-child .el-radio-button__inner,
+.ws-mode-switch .el-radio-button:last-child .el-radio-button__inner {
+  border-radius: calc(var(--saas-radius-md) - 2px) !important;
+}
+
+.ws-mode-switch .el-radio-button__original-radio:checked + .el-radio-button__inner {
+  background: var(--saas-primary);
+  color: var(--saas-text-inverse);
+}
+
+.ws-mode-switch .el-radio-button__inner:hover {
+  color: var(--saas-text-primary);
+}
+
+.table-search-input {
+  width: var(--saas-search-input-width);
+  flex-shrink: 0;
+}
+
+/* 侧栏顶部搜索（与右侧 table-actions 同行对齐） */
+.domain-sidebar {
+  width: var(--saas-domain-sidebar-width);
+  min-width: var(--saas-domain-sidebar-width);
+  flex-shrink: 0;
+  background: var(--saas-bg-card);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-search,
+.sidebar-head-spacer {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 10px var(--saas-space-4);
+  border-bottom: 1px solid var(--saas-border-light);
+  background: var(--saas-bg-card);
+}
+
+.sidebar-head-spacer {
+  min-height: 30px;
+}
+
+.sidebar-search .el-input {
+  width: 100%;
+}
+
+.sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.sidebar-empty-inline {
+  padding: 16px 12px;
+  text-align: center;
+  font-size: var(--saas-text-sm);
+  color: var(--saas-text-tertiary);
+}
+
+/* 侧栏 + 表格双列网格：搜索行与 table-actions 同行等高 */
+.table-mode {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.table-layout {
+  height: 100%;
+  min-height: 0;
+}
+
+/* 全表编辑页：无侧栏，工具栏 + 表格单列 */
+.ws-flat-table {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ws-flat-table .ws-flat-head {
+  display: grid;
+  grid-template-columns: var(--saas-domain-sidebar-width) minmax(0, 1fr);
+  flex-shrink: 0;
+  align-items: stretch;
+}
+
+.ws-flat-table .ws-flat-head .sidebar-search {
+  border-right: 1px solid var(--saas-border-light);
+}
+
+.ws-flat-table .ws-flat-head .table-actions {
+  min-width: 0;
+}
+
+.ws-flat-table .table-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--saas-bg-page);
+}
+
+.ws-edit-grid {
+  display: grid;
+  grid-template-columns: var(--saas-domain-sidebar-width) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.ws-edit-grid .domain-sidebar,
+.ws-edit-grid .table-content {
+  display: contents;
+}
+
+.ws-edit-grid .sidebar-search,
+.ws-edit-grid .sidebar-head-spacer {
+  grid-column: 1;
+  grid-row: 1;
+  border-right: 1px solid var(--saas-border-light);
+}
+
+.ws-edit-grid .sidebar-list,
+.ws-edit-grid .sidebar-loading,
+.ws-edit-grid .sidebar-empty,
+.ws-edit-grid .sidebar-rail {
+  grid-column: 1;
+  grid-row: 2;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--saas-bg-card);
+  border-right: 1px solid var(--saas-border-light);
+}
+
+.ws-edit-grid .sidebar-rail {
+  overflow: hidden;
+}
+
+.ws-edit-grid .table-actions {
+  grid-column: 2;
+  grid-row: 1;
+  width: 100%;
+  min-width: 0;
+}
+
+.ws-edit-grid .table-body {
+  grid-column: 2;
+  grid-row: 2;
+  min-height: 0;
+  overflow: auto;
+  background: var(--saas-bg-page);
+}
+
+.table-content .table-body {
+  min-height: 0;
+  overflow: auto;
+}
+
+/* Workspace 页面工具栏布局 */
+.page-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--saas-space-3);
+  padding: var(--saas-space-4) var(--saas-space-6);
+  background: var(--saas-bg-card);
+  border-bottom: 1px solid var(--saas-border-light);
+}
+
+.page-toolbar .toolbar-left {
+  display: flex;
+  align-items: baseline;
+  gap: var(--saas-space-3);
+  min-width: 0;
+}
+
+.page-toolbar .page-title {
+  font-size: var(--saas-text-xl);
+  font-weight: var(--saas-font-semibold);
+  margin: 0;
+  color: var(--saas-text-primary);
+}
+
+.page-toolbar .page-desc {
+  font-size: var(--saas-text-sm);
+  color: var(--saas-text-tertiary);
+}
+
+.page-toolbar .toolbar-right {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--saas-space-3);
+}
+
+.page-toolbar:has(.toolbar-right:only-child),
+.section-header:has(.header-actions:only-child) {
+  justify-content: flex-end;
+}
+
+.table-actions,
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--saas-space-3);
+  padding: 10px var(--saas-space-4);
+  background: var(--saas-bg-card);
+  border-bottom: 1px solid var(--saas-border-light);
+  width: 100%;
+}
+
+/* 工具栏三区：左（新增/刷新）· 中（提取等，相对整条工具栏居中）· 右（模式切换） */
+.table-actions.ws-toolbar-zones,
+.excel-toolbar.ws-toolbar-zones {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  flex-wrap: nowrap;
+  padding: 10px var(--saas-space-4);
+  background: var(--saas-bg-card);
+  border-bottom: 1px solid var(--saas-border-light);
+  width: 100%;
+}
+
+.ws-toolbar-zone {
+  display: flex;
+  align-items: center;
+  gap: var(--saas-space-3);
+  min-width: 0;
+}
+
+.ws-toolbar-zone--start {
+  justify-content: flex-start;
+  justify-self: stretch;
+}
+
+.ws-toolbar-zone--center {
+  justify-content: center;
+  justify-self: center;
+  flex-wrap: wrap;
+}
+
+.ws-toolbar-zone--end {
+  justify-content: flex-end;
+  justify-self: stretch;
+  flex-shrink: 0;
+}
+
+.table-actions.ws-toolbar-zones .ws-mode-switch,
+.excel-toolbar.ws-toolbar-zones .ws-mode-switch {
+  margin-left: 0;
+}
+
+.ws-btn-group .el-button.is-loading {
+  opacity: 0.85;
+}
+
+.ws-btn-group--danger .el-button.el-button--danger {
+  background: var(--saas-danger);
+  color: var(--saas-text-inverse);
+}
+
+.ws-btn-group--danger .el-button.el-button--danger:hover:not(:disabled) {
+  background: #dc2626;
+  color: var(--saas-text-inverse);
+}
+
+.ws-btn-group--success .el-button:hover:not(:disabled) {
+  background: var(--saas-success-bg);
+  color: #047857;
+}
+
+.excel-toolbar:not(.ws-toolbar-zones) {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--saas-space-3);
+  padding: 10px var(--saas-space-4);
+  background: var(--saas-bg-card);
+  border-bottom: 1px solid var(--saas-border-light);
+  width: 100%;
+}
+
+.excel-toolbar .dirty-hint {
+  font-size: var(--saas-text-sm);
+  color: var(--el-color-warning);
+}
+
+.table-actions:not(.ws-toolbar-zones):has(.ws-btn-group:only-child),
+.table-actions.table-actions--end {
+  justify-content: flex-end;
+}
+
+.table-actions:not(.ws-toolbar-zones) .ws-btn-group:only-child {
+  margin-left: auto;
+}
+
+.ws-toolbar-zone--start .ws-btn-group {
+  margin-left: 0;
+}
+
+.table-actions:not(.ws-toolbar-zones) .ws-mode-switch,
+.table-toolbar .ws-mode-switch,
+.excel-toolbar:not(.ws-toolbar-zones) .ws-mode-switch {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.table-actions:not(.ws-toolbar-zones) .ws-btn-group:not(:only-child) {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Workspace 侧边 Domain / 分组列表项（与 ws-nav-item 选中态一致） */
+.domain-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background var(--saas-transition);
+  border-bottom: 1px solid var(--saas-border-light);
+}
+
+.domain-item:hover {
+  background: var(--saas-bg-hover);
+}
+
+.domain-item.active {
+  background: var(--saas-primary-bg);
+}
+
+.domain-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--saas-primary);
+}
+
+.domain-item.active .domain-name {
+  color: var(--saas-primary);
+  font-weight: 600;
+}
+
+.domain-item .domain-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--saas-text-primary);
+}
+
+.domain-item .domain-count {
+  font-size: 11px;
+  color: var(--saas-text-tertiary);
+  background: var(--saas-bg-input);
+  padding: 1px 7px;
+  border-radius: 10px;
+}
+
+.domain-item.was-deleted {
+  background: var(--saas-warning-bg);
+}
+
+.domain-item.was-deleted .domain-name {
+  color: var(--saas-warning);
+}
+
+/* 合并工具分组列表项 */
+.group-item {
+  position: relative;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--saas-border-light);
+  cursor: pointer;
+  transition: background var(--saas-transition);
+}
+
+.group-item:hover {
+  background: var(--saas-bg-hover);
+}
+
+.group-item.active {
+  background: var(--saas-primary-bg);
+}
+
+.group-item.merged {
+  background: var(--saas-success-bg);
+}
+
+.group-item.merged.active {
+  background: var(--saas-success-bg);
+}
+
+.group-item.has-subset:not(.merged) {
+  background: var(--saas-danger-bg);
+}
+
+.group-item.has-ct-align:not(.merged) {
+  background: var(--saas-warning-bg);
+}
+
+.group-item.skipped {
+  opacity: 0.5;
 }

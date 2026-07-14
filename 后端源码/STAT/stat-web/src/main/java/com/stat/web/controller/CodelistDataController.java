@@ -3,6 +3,7 @@ package com.stat.web.controller;
 import com.stat.common.dto.CodelistDataDTO;
 import com.stat.common.result.CommonResult;
 import com.stat.common.result.PageCommonResult;
+import com.stat.common.security.RequireProjectAccess;
 import com.stat.common.security.UserContext;
 import com.stat.dal.mapper.CodelistDataMapper;
 import com.stat.dal.mapper.ProjectConfigMapper;
@@ -13,6 +14,9 @@ import com.stat.dal.po.ProjectConfigPO;
 import com.stat.dal.po.ProjectSpecPO;
 import com.stat.dal.po.VlmDataPO;
 import com.stat.service.ICodelistDataService;
+import com.stat.service.ProjectFilePathResolver;
+import com.stat.service.CodelistExtractionResult;
+import com.stat.service.CodelistExtractionService;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,6 +58,12 @@ public class CodelistDataController {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private ProjectFilePathResolver pathResolver;
+
+    @Autowired
+    private CodelistExtractionService codelistExtractionService;
+
     @Value("${app.python.path:C:/Project_Web/019_defineXML/Python}")
     private String pythonPath;
 
@@ -63,6 +73,7 @@ public class CodelistDataController {
     /**
      * 分页查询CodeList数据
      */
+    @RequireProjectAccess("projectId")
     @GetMapping("/list")
     public CommonResult<PageCommonResult<CodelistDataDTO>> getCodelistDataList(
             @RequestParam(value = "projectId", required = false) String projectId,
@@ -82,6 +93,7 @@ public class CodelistDataController {
         try {
             Map<String, Object> params = new HashMap<>();
             params.put("projectId", projectId != null ? projectId : "");
+            params.put("username", UserContext.getUsername());
             params.put("vcd", vcd != null ? vcd : "");
             params.put("code", code != null ? code : "");
             params.put("vlabel", vlabel != null ? vlabel : "");
@@ -110,6 +122,7 @@ public class CodelistDataController {
     /**
      * 根据项目ID查询所有CodeList数据
      */
+    @RequireProjectAccess("projectId")
     @GetMapping("/project/{projectId}")
     public CommonResult<List<CodelistDataDTO>> getCodelistDataByProject(@PathVariable String projectId) {
         try {
@@ -123,6 +136,7 @@ public class CodelistDataController {
     /**
      * 根据项目ID和VCD查询CodeList数据
      */
+    @RequireProjectAccess("projectId")
     @GetMapping("/project/{projectId}/vcd/{vcd}")
     public CommonResult<List<CodelistDataDTO>> getCodelistDataByProjectAndVcd(
             @PathVariable String projectId, 
@@ -141,6 +155,7 @@ public class CodelistDataController {
     @GetMapping("/{id}")
     public CommonResult<CodelistDataDTO> getCodelistDataById(@PathVariable Long id) {
         try {
+            requireOwnedCodelist(id);
             CodelistDataDTO result = codelistDataService.getCodelistDataById(id);
             if (result != null) {
                 return CommonResult.success(result);
@@ -155,6 +170,7 @@ public class CodelistDataController {
     /**
      * 新增CodeList数据
      */
+    @RequireProjectAccess("projectId")
     @PostMapping
     public CommonResult<String> addCodelistData(@RequestBody CodelistDataDTO codelistDataDTO) {
         try {
@@ -175,6 +191,7 @@ public class CodelistDataController {
     @PutMapping("/{id}")
     public CommonResult<String> updateCodelistData(@PathVariable Long id, @RequestBody CodelistDataDTO codelistDataDTO) {
         try {
+            requireOwnedCodelist(id);
             codelistDataDTO.setId(id);
             boolean success = codelistDataService.updateCodelistData(codelistDataDTO);
             if (success) {
@@ -193,6 +210,7 @@ public class CodelistDataController {
     @DeleteMapping("/{id}")
     public CommonResult<String> deleteCodelistData(@PathVariable Long id) {
         try {
+            requireOwnedCodelist(id);
             boolean success = codelistDataService.deleteCodelistData(id);
             if (success) {
                 return CommonResult.success("删除CodeList数据成功");
@@ -204,6 +222,7 @@ public class CodelistDataController {
         }
     }
 
+    @RequireProjectAccess("projectId")
     @DeleteMapping("/by-vcd/{projectId}")
     public CommonResult<String> deleteByVcd(@PathVariable String projectId, @RequestParam String vcd) {
         try {
@@ -228,6 +247,7 @@ public class CodelistDataController {
         }
     }
 
+    @RequireProjectAccess("projectId")
     @GetMapping("/deleted-vcds/{projectId}")
     public CommonResult<List<String>> getDeletedVcds(@PathVariable String projectId) {
         try {
@@ -242,6 +262,7 @@ public class CodelistDataController {
         }
     }
 
+    @RequireProjectAccess("projectId")
     @DeleteMapping("/deleted-vcds/{projectId}")
     public CommonResult<String> clearDeletedVcd(@PathVariable String projectId, @RequestParam String vcd) {
         try {
@@ -255,6 +276,7 @@ public class CodelistDataController {
         }
     }
 
+    @RequireProjectAccess("projectId")
     @PostMapping("/batch-delete-marked/{projectId}")
     public CommonResult<String> batchDeleteMarked(@PathVariable String projectId) {
         try {
@@ -285,6 +307,11 @@ public class CodelistDataController {
     @PutMapping("/sort-order")
     public CommonResult<String> updateSortOrder(@RequestBody List<Map<String, Object>> sortOrderList) {
         try {
+            for (Map<String, Object> item : sortOrderList) {
+                Object id = item.get("id");
+                if (id == null) throw new IllegalArgumentException("排序记录缺少ID");
+                requireOwnedCodelist(Long.valueOf(id.toString()));
+            }
             boolean success = codelistDataService.batchUpdateSortOrder(sortOrderList);
             if (success) {
                 return CommonResult.success("更新排序顺序成功");
@@ -299,6 +326,7 @@ public class CodelistDataController {
     /**
      * 获取项目中所有不同的VCD列表
      */
+    @RequireProjectAccess("projectId")
     @GetMapping("/vcds/{projectId}")
     public CommonResult<List<String>> getVcdsByProject(@PathVariable String projectId) {
         try {
@@ -312,6 +340,7 @@ public class CodelistDataController {
     /**
      * 获取VCD与Domain的映射关系
      */
+    @RequireProjectAccess("projectId")
     @GetMapping("/vcd-domains/{projectId}")
     public CommonResult<Map<String, Object>> getVcdDomainsMapping(@PathVariable String projectId) {
         try {
@@ -357,8 +386,22 @@ public class CodelistDataController {
      * CodeList数据提取和导入
      * 只处理CodeList数据的提取和导入
      */
+    @RequireProjectAccess("projectId")
     @PostMapping("/extract-codelist")
-    public CommonResult<String> extractCodelistData(@RequestBody Map<String, String> request) {
+    public CommonResult<CodelistExtractionResult> extractCodelistData(@RequestBody Map<String, String> request) {
+        try {
+            String projectId = request.get("projectId");
+            CodelistExtractionService.Scope scope = CodelistExtractionService.Scope.from(
+                    request.get("scope"), CodelistExtractionService.Scope.ALL);
+            CodelistExtractionResult result = codelistExtractionService.extract(
+                    projectId, UserContext.getUsername(), scope);
+            return CommonResult.success(result);
+        } catch (Exception e) {
+            return CommonResult.failed("执行Codelist提取失败: " + e.getMessage());
+        }
+    }
+
+    private CommonResult<String> extractCodelistDataLegacy(Map<String, String> request) {
         System.out.println("收到CodeList数据提取请求: " + request);
         
         try {
@@ -415,8 +458,9 @@ public class CodelistDataController {
             env.put("PYTHONIOENCODING", "utf-8");
             env.put("PYTHON_BASE_PATH", pythonPath);
             env.put("UPLOAD_BASE_PATH", uploadBasePath);
-            env.put("DATA_PATH", uploadBasePath + "/" + projectId + "/xpt");
-            env.put("OUTPUT_PATH", uploadBasePath + "/" + projectId + "/output");
+            String standardType = pathResolver.resolveStandardType(projectId, null);
+            env.put("DATA_PATH", pathResolver.xptDirectory(projectId, standardType).toString());
+            env.put("OUTPUT_PATH", pathResolver.extractionOutputDirectory(projectId, standardType).toString());
             String currentUser = UserContext.getUsername();
             if (currentUser != null && !currentUser.isEmpty()) {
                 env.put("USERNAME_CONTEXT", currentUser);
@@ -501,6 +545,7 @@ public class CodelistDataController {
      * Fill NCI Codelist Code and NCI Term Code from ct_term table.
      * Also fills Terminology from project_config CT version.
      */
+    @RequireProjectAccess("projectId")
     @PostMapping("/fill-nci-codes/{projectId}")
     public CommonResult<String> fillNciCodes(@PathVariable String projectId) {
         try {
@@ -646,6 +691,7 @@ public class CodelistDataController {
      * Fill codelist ID from Variables (cdisc_submission_value) and VLM (codelist column).
      * Also fills Name from variable labels.
      */
+    @RequireProjectAccess("projectId")
     @PostMapping("/fill-codelist-id/{projectId}")
     public CommonResult<String> fillCodelistId(@PathVariable String projectId) {
         try {
@@ -712,6 +758,7 @@ public class CodelistDataController {
      * Compare current codelist data with EDC Excel CODELIST sheet.
      * Returns missing (EDC has, DB lacks) and extra (DB has, EDC lacks) terms.
      */
+    @RequireProjectAccess("projectId")
     @PostMapping("/compare-edc/{projectId}")
     public CommonResult<Map<String, Object>> compareEdc(@PathVariable String projectId) {
         try {
@@ -719,7 +766,7 @@ public class CodelistDataController {
 
             // Load EDC CODELIST sheet
             List<Map<String, Object>> files = jdbcTemplate.queryForList(
-                    "SELECT file_path FROM file_upload_records WHERE project_id = ? AND file_category = 'EDC_CODELIST' ORDER BY upload_time DESC LIMIT 1",
+                    "SELECT COALESCE(workspace_file_path, file_path) AS file_path FROM file_upload_records WHERE project_id = ? AND file_category = 'EDC_CODELIST' AND deleted = 0 ORDER BY upload_time DESC LIMIT 1",
                     projectId);
             if (files.isEmpty()) {
                 return CommonResult.failed("未找到EDC建库说明文件，请先在文件上传页上传");
@@ -773,40 +820,39 @@ public class CodelistDataController {
 
             // Load current codelist data
             List<CodelistDataPO> clList = codelistDataMapper.selectByProjectId(projectId, username);
-            // Build a set of (vcd_upper + "|" + code_trimmed) for existing terms
-            Set<String> existingTerms = new HashSet<>();
+            // Group current terms by normalized VCD. EDC terms must only be
+            // compared within their own codelist, otherwise identical values
+            // such as Y/N in an unrelated codelist create false matches.
             Map<String, List<CodelistDataPO>> clByVcd = new LinkedHashMap<>();
             if (clList != null) {
                 for (CodelistDataPO cl : clList) {
                     String vcd = cl.getVcd() != null ? cl.getVcd().trim() : "";
-                    String code = cl.getCode() != null ? cl.getCode().trim() : "";
-                    existingTerms.add(vcd.toUpperCase() + "|" + code);
-                    clByVcd.computeIfAbsent(vcd, k -> new ArrayList<>()).add(cl);
+                    clByVcd.computeIfAbsent(vcd.toUpperCase(), k -> new ArrayList<>()).add(cl);
                 }
             }
 
             // Compare: find missing and extra
             List<Map<String, String>> missing = new ArrayList<>();
-            Set<String> edcAllTermKeys = new HashSet<>();
+            Set<Long> matchedDbIds = new HashSet<>();
 
             for (Map.Entry<String, List<Map<String, String>>> e : edcMap.entrySet()) {
                 String edcCode = e.getKey();
                 String edcName = e.getValue().get(0).getOrDefault("name", "");
+                List<CodelistDataPO> targetTerms = clByVcd.getOrDefault(
+                        edcCode.trim().toUpperCase(), Collections.emptyList());
                 for (Map<String, String> term : e.getValue()) {
                     String termVal = term.get("code");
                     String termLabel = term.get("label");
-                    // Try to match EDC code name against existing VCDs
-                    boolean found = false;
-                    for (String vcd : clByVcd.keySet()) {
-                        if (existingTerms.contains(vcd.toUpperCase() + "|" + termVal) ||
-                            existingTerms.contains(vcd.toUpperCase() + "|" + termLabel)) {
-                            found = true;
-                            edcAllTermKeys.add(vcd.toUpperCase() + "|" + termVal);
-                            edcAllTermKeys.add(vcd.toUpperCase() + "|" + termLabel);
+                    CodelistDataPO matchedTerm = null;
+                    for (CodelistDataPO dbTerm : targetTerms) {
+                        if (matchesEdcTerm(dbTerm, termVal, termLabel)) {
+                            matchedTerm = dbTerm;
                             break;
                         }
                     }
-                    if (!found) {
+                    if (matchedTerm != null) {
+                        if (matchedTerm.getId() != null) matchedDbIds.add(matchedTerm.getId());
+                    } else {
                         Map<String, String> m = new LinkedHashMap<>();
                         m.put("edcName", edcCode);
                         m.put("edcLabel", edcName);
@@ -825,14 +871,7 @@ public class CodelistDataController {
                 String code = cl.getCode() != null ? cl.getCode().trim() : "";
                 // VLM-level vcd has format DS.VAR.FILTERVAL (2+ dots), skip those
                 if (vcd.chars().filter(c -> c == '.').count() >= 2) continue;
-                boolean matchedByEdc = false;
-                for (String key : edcAllTermKeys) {
-                    if (key.startsWith(vcd.toUpperCase() + "|")) {
-                        matchedByEdc = true;
-                        break;
-                    }
-                }
-                if (!matchedByEdc && !edcMap.isEmpty()) {
+                if ((cl.getId() == null || !matchedDbIds.contains(cl.getId())) && !edcMap.isEmpty()) {
                     Map<String, String> m = new LinkedHashMap<>();
                     m.put("vcd", vcd);
                     m.put("code", code);
@@ -850,6 +889,15 @@ public class CodelistDataController {
         } catch (Exception e) {
             return CommonResult.failed("比对EDC失败: " + e.getMessage());
         }
+    }
+
+    private CodelistDataPO requireOwnedCodelist(Long id) {
+        CodelistDataPO row = codelistDataMapper.selectById(id);
+        String username = UserContext.getUsername();
+        if (row == null || username == null || !username.equals(row.getUsername())) {
+            throw new IllegalArgumentException("CodeList数据不存在或无权访问");
+        }
+        return row;
     }
 
     private void ensureDeletedTable() {
@@ -882,13 +930,26 @@ public class CodelistDataController {
         if (col < 0) return "";
         Cell cell = row.getCell(col);
         if (cell == null) return "";
-        cell.setCellType(CellType.STRING);
-        return cell.getStringCellValue().trim();
+        return new DataFormatter().formatCellValue(cell).trim();
+    }
+
+    private boolean matchesEdcTerm(CodelistDataPO dbTerm, String edcValue, String edcLabel) {
+        String dbCode = normalizeCompareValue(dbTerm.getCode());
+        String dbDescription = normalizeCompareValue(dbTerm.getCodeDes());
+        String value = normalizeCompareValue(edcValue);
+        String label = normalizeCompareValue(edcLabel);
+        return (!value.isEmpty() && (value.equals(dbCode) || value.equals(dbDescription)))
+                || (!label.isEmpty() && (label.equals(dbCode) || label.equals(dbDescription)));
+    }
+
+    private String normalizeCompareValue(String value) {
+        return value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
     }
 
     /**
      * Apply selected missing terms from EDC comparison into sas_codelist_data.
      */
+    @RequireProjectAccess("projectId")
     @PostMapping("/apply-edc-diff/{projectId}")
     public CommonResult<String> applyEdcDiff(@PathVariable String projectId, @RequestBody Map<String, Object> request) {
         try {
@@ -939,6 +1000,7 @@ public class CodelistDataController {
         }
     }
 
+    @RequireProjectAccess("projectId")
     @GetMapping("/export-xlsx/{projectId}")
     public ResponseEntity<byte[]> exportCodelistXlsx(@PathVariable String projectId) {
         try {
@@ -995,6 +1057,7 @@ public class CodelistDataController {
         }
     }
 
+    @RequireProjectAccess("projectId")
     @PostMapping("/import-xlsx/{projectId}")
     public CommonResult<String> importCodelistXlsx(@PathVariable String projectId,
                                                     @RequestBody Map<String, Object> request) {
@@ -1067,6 +1130,7 @@ public class CodelistDataController {
     /**
      * Analyze codelists to find groups with identical term sets that can be merged.
      */
+    @RequireProjectAccess("projectId")
     @GetMapping("/merge/analyze/{projectId}")
     public CommonResult<List<Map<String, Object>>> analyzeMerge(@PathVariable String projectId) {
         try {
@@ -1269,6 +1333,7 @@ public class CodelistDataController {
      * Unified analysis: groups VCDs by identical term sets, then detects subset relationships
      * between those groups, building clusters that show the full merge picture.
      */
+    @RequireProjectAccess("projectId")
     @GetMapping("/merge/analyze-unified/{projectId}")
     public CommonResult<List<Map<String, Object>>> analyzeUnified(@PathVariable String projectId) {
         try {
@@ -2036,6 +2101,7 @@ public class CodelistDataController {
      * Analyze codelists to find subset relationships (A's terms ⊆ B's terms).
      * Groups are built around the largest superset, with each subset listed.
      */
+    @RequireProjectAccess("projectId")
     @GetMapping("/merge/analyze-subsets/{projectId}")
     public CommonResult<List<Map<String, Object>>> analyzeSubsets(@PathVariable String projectId) {
         try {
@@ -2276,6 +2342,7 @@ public class CodelistDataController {
     /**
      * Execute codelist merge: consolidate identical term groups into one codelist and backfill references.
      */
+    @RequireProjectAccess("projectId")
     @PostMapping("/merge/execute/{projectId}")
     public CommonResult<Map<String, Object>> executeMerge(@PathVariable String projectId, @RequestBody Map<String, Object> request) {
         try {
@@ -2431,6 +2498,7 @@ public class CodelistDataController {
     /**
      * Get merge history log for a project.
      */
+    @RequireProjectAccess("projectId")
     @GetMapping("/merge/log/{projectId}")
     public CommonResult<List<Map<String, Object>>> getMergeLog(@PathVariable String projectId) {
         try {
@@ -2451,6 +2519,7 @@ public class CodelistDataController {
      * Returns rules where at least 2 of the original_vcds still exist in sas_codelist_data as separate VCDs
      * (i.e., they were re-extracted after a previous merge and can be merged again).
      */
+    @RequireProjectAccess("projectId")
     @GetMapping("/merge/pending-rules/{projectId}")
     public CommonResult<List<Map<String, Object>>> getPendingMergeRules(@PathVariable String projectId) {
         try {
@@ -2519,6 +2588,7 @@ public class CodelistDataController {
     /**
      * Re-apply all pending merge rules from history in one shot.
      */
+    @RequireProjectAccess("projectId")
     @PostMapping("/merge/reapply-all/{projectId}")
     public CommonResult<String> reapplyAllMerges(@PathVariable String projectId) {
         try {
@@ -2633,6 +2703,7 @@ public class CodelistDataController {
     /**
      * Undo a merge: restore original VCDs from merge log.
      */
+    @RequireProjectAccess("projectId")
     @PostMapping("/merge/undo/{projectId}")
     public CommonResult<String> undoMerge(@PathVariable String projectId, @RequestBody Map<String, Object> request) {
         try {
@@ -2796,6 +2867,7 @@ public class CodelistDataController {
      * Undo an ENTIRE merge batch: undoes all merged_vcds tied to the same merge_batch_id.
      * Use this for multi-target merges so a single click restores the source cluster fully.
      */
+    @RequireProjectAccess("projectId")
     @PostMapping("/merge/undo-batch/{projectId}")
     public CommonResult<String> undoBatch(@PathVariable String projectId, @RequestBody Map<String, Object> request) {
         try {

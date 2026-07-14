@@ -1,13 +1,6 @@
 <template>
   <div class="study-page">
     <div class="study-container">
-      <div class="section-header">
-        <div class="section-title-group">
-          <h3>Study</h3>
-          <span class="section-desc">研究级别元数据（只读，派生自项目信息）</span>
-        </div>
-      </div>
-
       <div class="study-card" v-loading="loading">
         <div class="study-table">
           <div class="study-row" v-for="item in studyFields" :key="item.key">

@@ -1,79 +1,92 @@
 <template>
   <div class="spec-edit-page">
-    <div class="page-toolbar">
-      <div class="toolbar-left">
-        <h3 class="page-title">Variables</h3>
-        <span class="page-desc">P21 变量定义（基于 Spec 数据）</span>
-      </div>
-      <div class="toolbar-right">
-        <el-button type="warning" size="small" @click="extractP21Fields" :loading="p21Extracting" plain>
-          <el-icon><Download /></el-icon> 提取P21字段
-        </el-button>
-        <el-button type="warning" size="small" @click="extractPages" :loading="pagesExtracting" plain>
-          <el-icon><Document /></el-icon> 提取Pages
-        </el-button>
-        <el-button type="warning" size="small" @click="extractMethodsComments" :loading="mcExtracting" plain>
-          <el-icon><Connection /></el-icon> 提取Method&Comments
-        </el-button>
-        <el-button type="success" size="small" @click="extractCodelist" :loading="codelistExtracting" plain>
-          <el-icon><Grid /></el-icon> 提取Codelist
-        </el-button>
-        <el-radio-group v-model="editMode" size="small">
-          <el-radio-button value="table">表格模式</el-radio-button>
-          <el-radio-button value="excel">Excel 模式</el-radio-button>
-        </el-radio-group>
-      </div>
-    </div>
-
     <!-- 表格模式 -->
     <div v-if="editMode === 'table'" class="table-mode">
-      <div class="table-layout">
+      <div class="table-layout ws-edit-grid">
         <div class="domain-sidebar">
-          <div class="sidebar-title">Domain 导航</div>
-          <div v-if="domainsLoading" class="sidebar-loading">
-            <el-icon class="is-loading"><Loading /></el-icon>
-          </div>
-          <div v-else-if="domains.length === 0" class="sidebar-empty">
+          <template v-if="domainsLoading">
+            <div class="sidebar-head-spacer" aria-hidden="true"></div>
+            <div class="sidebar-loading">
+              <el-icon class="is-loading"><Loading /></el-icon>
+            </div>
+          </template>
+          <template v-else-if="domains.length === 0">
+            <div class="sidebar-head-spacer" aria-hidden="true"></div>
+            <div class="sidebar-empty">
             <span>暂无数据</span>
             <p class="sidebar-hint">请先上传并处理项目 Spec</p>
-          </div>
+            </div>
+          </template>
           <template v-else>
-            <div
-              v-for="d in domains" :key="d"
-              class="domain-item"
-              :class="{ active: selectedDomain === d }"
-              @click="selectDomain(d)"
-            >
-              <span class="domain-name">{{ d }}</span>
-              <span class="domain-count">{{ domainStats[d] || 0 }}</span>
+            <div class="sidebar-search">
+              <el-input
+                v-model="searchKeyword"
+                placeholder="搜索变量名或标签..."
+                size="small"
+                clearable
+                prefix-icon="Search"
+              />
+            </div>
+            <div class="sidebar-list">
+              <div
+                v-for="d in domains" :key="d"
+                class="domain-item"
+                :class="{ active: selectedDomain === d }"
+                @click="selectDomain(d)"
+              >
+                <span class="domain-name">{{ d }}</span>
+                <span class="domain-count">{{ domainStats[d] || 0 }}</span>
+              </div>
             </div>
           </template>
         </div>
 
         <div class="table-content">
-          <div class="table-actions">
-            <el-input
-              v-model="searchKeyword"
-              placeholder="搜索变量名或标签..."
-              size="small"
-              clearable
-              prefix-icon="Search"
-              style="width: 200px"
-            />
-            <el-button type="primary" size="small" @click="showAddDialog" :disabled="!selectedDomain">
-              <el-icon><Plus /></el-icon> 新增
-            </el-button>
-            <el-button size="small" @click="refreshData">
-              <el-icon><Refresh /></el-icon> 刷新
-            </el-button>
-            <el-button type="success" size="small" @click="generateSupp" :loading="suppGenerating" plain>
-              <el-icon><SetUp /></el-icon> 生成SUPP
-            </el-button>
-            <el-button type="info" size="small" @click="compareP21" :loading="p21Comparing" plain>
-              <el-icon><DataAnalysis /></el-icon> 对比P21
-            </el-button>
+          <div class="table-actions ws-toolbar-zones">
+            <div class="ws-toolbar-zone ws-toolbar-zone--start">
+              <div class="ws-btn-group">
+                <el-button type="primary" size="small" @click="showAddDialog" :disabled="!selectedDomain">
+                  <el-icon><Plus /></el-icon> 新增
+                </el-button>
+                <el-button size="small" @click="refreshData">
+                  <el-icon><Refresh /></el-icon> 刷新
+                </el-button>
+              </div>
+            </div>
+            <div class="ws-toolbar-zone ws-toolbar-zone--center">
+              <div class="ws-btn-group ws-btn-group--extract">
+                <el-button size="small" @click="generateSupp" :loading="suppGenerating">
+                  <el-icon><SetUp /></el-icon> 生成SUPP
+                </el-button>
+                <el-button size="small" @click="compareP21" :loading="p21Comparing">
+                  <el-icon><DataAnalysis /></el-icon> 对比P21
+                </el-button>
+                <el-button size="small" title="从XPT提取类型、长度、精度和格式" @click="extractXptMetadata" :loading="xptExtracting" :disabled="p21Extracting">
+                  <el-icon><DataAnalysis /></el-icon> 提取XPT
+                </el-button>
+                <el-button size="small" title="从P21空Spec提取Mandatory、Role和Has No Data" @click="extractP21Fields" :loading="p21Extracting" :disabled="xptExtracting">
+                  <el-icon><Download /></el-icon> 提取P21
+                </el-button>
+                <el-button size="small" @click="extractPages" :loading="pagesExtracting">
+                  <el-icon><Document /></el-icon> 提取Pages
+                </el-button>
+                <el-button size="small" @click="extractMethodsComments" :loading="mcExtracting">
+                  <el-icon><Connection /></el-icon> Method&Comments
+                </el-button>
+                <el-button size="small" @click="extractCodelist" :loading="codelistExtracting" :disabled="codelistExtracting">
+                  <el-icon><Grid /></el-icon> 提取Codelist
+                </el-button>
+              </div>
+            </div>
+            <div class="ws-toolbar-zone ws-toolbar-zone--end">
+              <el-radio-group v-model="editMode" size="small" class="ws-mode-switch">
+                <el-radio-button value="table">表格模式</el-radio-button>
+                <el-radio-button value="excel">Excel 模式</el-radio-button>
+              </el-radio-group>
+            </div>
           </div>
 
+          <div class="table-body">
           <el-table
             :data="filteredVariables"
             v-loading="tableLoading"
@@ -87,7 +100,7 @@
             <el-table-column prop="sortOrder" label="Order" width="70" align="center">
               <template #default="{ row }"><el-input v-if="isEditing(row,'sortOrder')" v-model="editForm.sortOrder" size="small" @keyup.enter="saveRow(row)" @keyup.escape="cancelEdit" /><span v-else @dblclick.stop="startEdit(row,'sortOrder')">{{row.sortOrder||'-'}}</span></template>
             </el-table-column>
-            <el-table-column prop="domain" label="Dataset" width="90" fixed>
+            <el-table-column prop="domain" label="Dataset" width="90" fixed class-name="col-dataset">
               <template #default="{ row }"><span class="ds-tag">{{row.domain||'-'}}</span></template>
             </el-table-column>
             <el-table-column prop="variable" label="Variable" width="120" fixed>
@@ -197,20 +210,56 @@
               </template>
             </el-table-column>
           </el-table>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- Excel 模式 -->
     <div v-if="editMode === 'excel'" class="excel-mode">
-      <div class="excel-toolbar">
-        <el-button type="success" size="small" @click="saveExcel" :loading="excelSaving" :disabled="!excelLoaded">
-          保存到数据库
-        </el-button>
-        <el-button size="small" @click="exportExcel">
-          导出 xlsx
-        </el-button>
-        <span v-if="excelDirty" class="dirty-hint">* 有未保存的修改</span>
+      <div class="excel-toolbar ws-toolbar-zones">
+        <div class="ws-toolbar-zone ws-toolbar-zone--start">
+          <div class="ws-btn-group">
+            <el-button type="primary" size="small" @click="saveExcel" :loading="excelSaving" :disabled="!excelLoaded">
+              <el-icon><DocumentChecked /></el-icon> 保存到数据库
+            </el-button>
+            <el-button size="small" @click="exportExcel" :disabled="!excelLoaded">
+              <el-icon><Download /></el-icon> 导出 xlsx
+            </el-button>
+          </div>
+          <el-tag v-if="excelDirty" type="warning" size="small" effect="plain">未保存</el-tag>
+        </div>
+        <div class="ws-toolbar-zone ws-toolbar-zone--center">
+          <div class="ws-btn-group ws-btn-group--extract">
+            <el-button size="small" @click="generateSupp" :loading="suppGenerating">
+              <el-icon><SetUp /></el-icon> 生成SUPP
+            </el-button>
+            <el-button size="small" @click="compareP21" :loading="p21Comparing">
+              <el-icon><DataAnalysis /></el-icon> 对比P21
+            </el-button>
+            <el-button size="small" title="从XPT提取类型、长度、精度和格式" @click="extractXptMetadata" :loading="xptExtracting" :disabled="p21Extracting">
+              <el-icon><DataAnalysis /></el-icon> 提取XPT
+            </el-button>
+            <el-button size="small" title="从P21空Spec提取Mandatory、Role和Has No Data" @click="extractP21Fields" :loading="p21Extracting" :disabled="xptExtracting">
+              <el-icon><Download /></el-icon> 提取P21
+            </el-button>
+            <el-button size="small" @click="extractPages" :loading="pagesExtracting">
+              <el-icon><Document /></el-icon> 提取Pages
+            </el-button>
+            <el-button size="small" @click="extractMethodsComments" :loading="mcExtracting">
+              <el-icon><Connection /></el-icon> Method&Comments
+            </el-button>
+            <el-button size="small" @click="extractCodelist" :loading="codelistExtracting" :disabled="codelistExtracting">
+              <el-icon><Grid /></el-icon> 提取Codelist
+            </el-button>
+          </div>
+        </div>
+        <div class="ws-toolbar-zone ws-toolbar-zone--end">
+          <el-radio-group v-model="editMode" size="small" class="ws-mode-switch">
+            <el-radio-button value="table">表格模式</el-radio-button>
+            <el-radio-button value="excel">Excel 模式</el-radio-button>
+          </el-radio-group>
+        </div>
       </div>
       <div class="excel-container">
         <div v-if="excelLoading" class="excel-loading">
@@ -364,10 +413,16 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { Loading, Plus, Refresh, Search, Download, WarningFilled, InfoFilled, SetUp, DataAnalysis, Document, Connection, Grid } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Loading, Plus, Refresh, Search, Download, DocumentChecked, WarningFilled, InfoFilled, SetUp, DataAnalysis, Document, Connection, Grid } from '@element-plus/icons-vue'
 import LuckyExcel from 'luckyexcel'
 import service from '@/axios'
+import {
+  CODELIST_SCOPES,
+  extractCodelists,
+  getCodelistExtractionError,
+  showCodelistExtractionResult,
+} from '@/utils/codelistExtraction'
 
 const props = defineProps({ projectId: String })
 const route = useRoute()
@@ -393,6 +448,7 @@ const addDialogVisible = ref(false)
 const addForm = ref({})
 
 // --- P21 extract / compare / SUPP / Pages state ---
+const xptExtracting = ref(false)
 const p21Extracting = ref(false)
 const p21Comparing = ref(false)
 const p21DiffVisible = ref(false)
@@ -475,12 +531,70 @@ const refreshData = () => {
   loadDomains()
 }
 
+const confirmRebuild = async (message) => {
+  try {
+    await ElMessageBox.confirm(message, '确认重建数据', {
+      confirmButtonText: '继续执行',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+const extractXptMetadata = async () => {
+  xptExtracting.value = true
+  try {
+    const res = await service.post(`${baseUrl}/project-spec-data/extract-xpt-metadata/${currentProjectId.value}`)
+    if (res.data?.success) {
+      const detail = res.data.data || {}
+      const message = detail.message || 'XPT元数据提取完成'
+      if (detail.partial) {
+        ElMessage.warning(message)
+        const failedDatasets = (detail.datasets || [])
+          .filter(item => item.status !== 'ok')
+          .map(item => `${item.dataset}: ${item.error || (item.status === 'missing' ? '未找到XPT文件' : item.status)}`)
+        if (failedDatasets.length > 0) {
+          ElMessageBox.alert(failedDatasets.join('\n'), 'XPT部分提取详情', {
+            confirmButtonText: '确定',
+            type: 'warning'
+          })
+        }
+      } else {
+        ElMessage.success(message)
+      }
+      refreshData()
+    } else {
+      ElMessage.warning(res.data?.message || 'XPT元数据提取失败')
+    }
+  } catch (e) {
+    ElMessage.error('提取XPT元数据失败: ' + (e.response?.data?.message || e.message))
+  } finally {
+    xptExtracting.value = false
+  }
+}
+
 const extractP21Fields = async () => {
   p21Extracting.value = true
   try {
     const res = await service.post(`${baseUrl}/project-spec-data/extract-p21-fields/${currentProjectId.value}`)
     if (res.data?.success) {
-      ElMessage.success(res.data.data || '提取完成')
+      const detail = res.data.data || {}
+      ElMessage.success(detail.message || 'P21字段提取完成')
+      if ((detail.specOnlyCount || 0) > 0 || (detail.p21OnlyCount || 0) > 0) {
+        const toDiffRow = key => {
+          const [dataset, variable = ''] = String(key).split('|', 2)
+          return { dataset, variable }
+        }
+        p21DiffData.value = {
+          matched: detail.matched || 0,
+          specOnly: (detail.specOnly || []).map(toDiffRow),
+          p21Only: (detail.p21Only || []).map(toDiffRow)
+        }
+        p21DiffVisible.value = true
+      }
       refreshData()
     } else {
       ElMessage.warning(res.data?.message || '提取失败')
@@ -510,6 +624,10 @@ const compareP21 = async () => {
 }
 
 const generateSupp = async () => {
+  const confirmed = await confirmRebuild(
+    '该操作会删除 SUPP=Y 的原变量，并重建对应 SUPPxx 数据集。请确认 SUPP 标记准确且当前编辑已保存。',
+  )
+  if (!confirmed) return
   suppGenerating.value = true
   try {
     const res = await service.post(`${baseUrl}/project-spec-data/generate-supp/${currentProjectId.value}`)
@@ -548,6 +666,10 @@ const extractPages = async () => {
 }
 
 const extractMethodsComments = async () => {
+  const confirmed = await confirmRebuild(
+    '该操作会清空并重建当前项目的 Methods 与 Comments，人工编辑内容可能被覆盖。是否继续？',
+  )
+  if (!confirmed) return
   mcExtracting.value = true
   try {
     const res = await service.post(`${baseUrl}/project-spec-data/extract-methods-comments/${currentProjectId.value}`)
@@ -566,18 +688,23 @@ const extractMethodsComments = async () => {
 }
 
 const extractCodelist = async () => {
+  if (codelistExtracting.value) return
+  const confirmed = await confirmRebuild(
+    '该操作会重建 Variables 级 Codelist，并重建 Dictionaries 数据。人工修改内容可能被覆盖。是否继续？',
+  )
+  if (!confirmed) return
   codelistExtracting.value = true
   try {
-    ElMessage.info('正在提取Variables级Codelist，请稍候...')
-    const res = await service.post(`${baseUrl}/project-spec-data/extract-var-codelist/${currentProjectId.value}`, {}, { timeout: 300000 })
-    if (res.data?.success) {
-      const d = res.data.data || {}
-      ElMessage.success(d.message || 'Codelist提取成功')
-    } else {
-      ElMessage.error(res.data?.message || '提取失败')
-    }
+    ElMessage.info('正在提取 Variables 级 Codelist，请稍候...')
+    const result = await extractCodelists({
+      baseUrl,
+      projectId: currentProjectId.value,
+      scope: CODELIST_SCOPES.VARIABLES,
+    })
+    await refreshData()
+    await showCodelistExtractionResult(CODELIST_SCOPES.VARIABLES, result)
   } catch (e) {
-    ElMessage.error('提取Codelist失败: ' + (e.response?.data?.message || e.message))
+    ElMessage.error(getCodelistExtractionError(e, CODELIST_SCOPES.VARIABLES))
   } finally {
     codelistExtracting.value = false
   }
@@ -826,38 +953,16 @@ onBeforeUnmount(() => {
 }
 
 /* ---- table mode ---- */
-.table-mode {
-  flex: 1;
-  overflow: hidden;
-}
-.table-layout {
-  display: flex;
-  height: 100%;
-}
-
 .domain-sidebar {
-  width: 200px;
-  min-width: 200px;
-  background: var(--saas-bg-card, #fff);
-  border-right: 1px solid var(--saas-border-light, #e5e7eb);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-
-  .sidebar-title {
-    padding: 12px 16px;
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--saas-text-tertiary, #9ca3af);
-    border-bottom: 1px solid var(--saas-border-light, #e5e7eb);
-  }
   .sidebar-loading, .sidebar-empty {
     padding: 24px 16px;
     text-align: center;
     color: var(--saas-text-tertiary, #9ca3af);
     font-size: 13px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
   }
   .sidebar-hint {
     font-size: 12px;
@@ -866,61 +971,14 @@ onBeforeUnmount(() => {
   }
 }
 
-.domain-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 16px;
-  cursor: pointer;
-  transition: all 0.15s;
-  border-left: 3px solid transparent;
-
-  &:hover { background: var(--saas-bg-hover, #f3f4f6); }
-  &.active {
-    background: var(--saas-primary-bg, #eff6ff);
-    border-left-color: var(--saas-primary, #4080ff);
-    .domain-name { color: var(--saas-primary, #4080ff); font-weight: 600; }
-  }
-
-  .domain-name {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--saas-text-primary, #1f2937);
-    font-family: 'SF Mono', 'Consolas', monospace;
-  }
-  .domain-count {
-    font-size: 11px;
-    color: var(--saas-text-tertiary, #9ca3af);
-    background: var(--saas-bg-input, #f3f4f6);
-    padding: 1px 7px;
-    border-radius: 10px;
-  }
-}
-
-.table-content {
-  flex: 1;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-}
-
-.table-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  background: var(--saas-bg-card, #fff);
-  border-bottom: 1px solid var(--saas-border-light, #e5e7eb);
-}
-
 .var-name {
-  font-family: 'SF Mono', 'Consolas', monospace;
+  font-family: inherit;
   font-weight: 600;
   color: var(--saas-primary-dark, #2563eb);
   font-size: 12px;
 }
 .ds-tag {
-  font-family: 'SF Mono', 'Consolas', monospace;
+  font-family: inherit;
   font-weight: 500;
   font-size: 11px;
   color: var(--saas-text-secondary, #6b7280);
@@ -940,20 +998,6 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-.excel-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 24px;
-  background: var(--saas-bg-card, #fff);
-  border-bottom: 1px solid var(--saas-border-light, #e5e7eb);
-
-  .dirty-hint {
-    font-size: 12px;
-    color: var(--el-color-warning);
-    margin-left: 8px;
-  }
 }
 .excel-container {
   flex: 1;

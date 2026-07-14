@@ -47,8 +47,7 @@ def _save_pages_to_db(pages_df, project_id: str, db_config: Dict[str, str], user
     """Insert pages summary data into sas_pages_data table."""
     import pymysql
     if pages_df is None or pages_df.empty:
-        print("  No pages data to save.")
-        return
+        raise ValueError("Pages extraction produced no mappings; existing data was preserved")
 
     username = username or os.environ.get('USERNAME_CONTEXT', '')
 
@@ -57,7 +56,7 @@ def _save_pages_to_db(pages_df, project_id: str, db_config: Dict[str, str], user
         conn = pymysql.connect(
             host=db_config['host'], user=db_config['user'],
             password=db_config['password'], database=db_config['database'],
-            charset='utf8mb4', autocommit=True
+            charset='utf8mb4', autocommit=False
         )
         with conn.cursor() as cur:
             if username:
@@ -80,12 +79,38 @@ def _save_pages_to_db(pages_df, project_id: str, db_config: Dict[str, str], user
                     idx,
                     'extraction_pipeline',
                 ))
+            conn.commit()
             print(f"  Saved {len(pages_df)} pages records to DB (username: {username or 'N/A'}).")
     except Exception as e:
-        print(f"  Failed to save pages to DB: {e}")
+        if conn:
+            conn.rollback()
+        raise RuntimeError(f"Failed to save pages to DB: {e}") from e
     finally:
         if conn:
             conn.close()
+
+
+def _load_vlm_from_db(project_id: str, db_config: Dict[str, str], username: str = None):
+    """Load current VLM rows directly from the database for Pages matching."""
+    import pandas as pd
+    import pymysql
+    conn = pymysql.connect(
+        host=db_config['host'], user=db_config['user'],
+        password=db_config['password'], database=db_config['database'],
+        charset='utf8mb4'
+    )
+    try:
+        sql = ("SELECT dataset AS Dataset, variable AS Variable, "
+               "where_clause AS `Where Clause` FROM sas_vlm_data WHERE project_id = %s")
+        params = [project_id]
+        if username:
+            sql += " AND username = %s"
+            params.append(username)
+        with conn.cursor(pymysql.cursors.DictCursor) as cursor:
+            cursor.execute(sql, params)
+            return pd.DataFrame(cursor.fetchall(), columns=['Dataset', 'Variable', 'Where Clause'])
+    finally:
+        conn.close()
 
 
 def run_pipeline(project_id: str = None,
@@ -120,6 +145,13 @@ def run_pipeline(project_id: str = None,
 
     run_steps = set(s.strip().lower() for s in steps.split(','))
     run_all = 'all' in run_steps
+    result = {
+        'success': True,
+        'projectId': project_id,
+        'steps': sorted(run_steps),
+        'pages': None,
+        'errors': [],
+    }
 
     print("=" * 60)
     print(f"  Extraction Pipeline  –  project: {project_id}")
@@ -141,6 +173,8 @@ def run_pipeline(project_id: str = None,
             print(f"  VLM: {len(vlm_data)} rows,  CodeList: {len(codelist_data)} rows")
         except Exception as e:
             print(f"  VLM/CodeList extraction failed: {e}")
+            result['success'] = False
+            result['errors'].append(f"VLM/CodeList: {e}")
             import traceback; traceback.print_exc()
 
     # --- Step 2: Pages ---
@@ -149,21 +183,33 @@ def run_pipeline(project_id: str = None,
         try:
             from find_variable_pages import extract_pages, build_pages_summary
             pages_output_file = os.path.join(output_path, 'variable_page_mapping.xlsx')
+            vlm_df = _load_vlm_from_db(project_id, db_config, username=username)
             results_df = extract_pages(
                 annots_path=annots_path,
                 spec_path=spec_path,
                 vlm_path=vlm_output if os.path.exists(vlm_output) else None,
                 output_path=pages_output_file,
+                vlm_data=vlm_df,
             )
             summary_df = build_pages_summary(results_df)
             _save_pages_to_db(summary_df, project_id, db_config, username=username)
+            result['pages'] = {
+                'detailRows': len(results_df),
+                'summaryRows': len(summary_df),
+                'domainVariables': int((summary_df['origin'] == 'Domain_Variable').sum()),
+                'vlmWhereClauses': int((summary_df['origin'] == 'VLM_WhereClause').sum()),
+            }
         except Exception as e:
             print(f"  Pages extraction failed: {e}")
+            result['success'] = False
+            result['errors'].append(f"Pages: {e}")
             import traceback; traceback.print_exc()
 
     print("\n" + "=" * 60)
     print("  Pipeline complete.")
     print("=" * 60)
+    print("[RESULT] " + json.dumps(result, ensure_ascii=False))
+    return result
 
 
 if __name__ == "__main__":
@@ -178,10 +224,11 @@ if __name__ == "__main__":
                         help='Username for data isolation')
     args = parser.parse_args()
 
-    run_pipeline(
+    result = run_pipeline(
         project_id=args.project_id,
         upload_base=args.upload_base,
         python_base=args.python_base,
         steps=args.steps,
         username=args.username,
     )
+    sys.exit(0 if result.get('success') else 1)

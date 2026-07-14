@@ -1,27 +1,20 @@
 <template>
   <div class="project-info-page">
-    <div class="info-container">
-      <!-- 标题行 -->
-      <div class="section-header">
-        <div class="section-title-group">
-          <h3>项目基本信息</h3>
-          <span class="section-desc">查看和编辑项目的基础配置信息</span>
-        </div>
-        <div class="header-actions">
-          <el-button v-if="!isEditing" @click="startEdit" round>
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" class="btn-icon">
-              <path d="M10 1.5L12.5 4M1.5 12.5L2 10L10 2L12 4L4 12L1.5 12.5Z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            编辑
-          </el-button>
-          <template v-else>
-            <el-button @click="cancelEdit" round>取消</el-button>
-            <el-button type="primary" @click="saveProject" :loading="saving" round>保存</el-button>
-          </template>
-        </div>
+    <div class="table-actions table-actions--end">
+      <div class="ws-btn-group">
+        <el-button v-if="!isEditing" size="small" @click="startEdit">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" class="btn-icon">
+            <path d="M10 1.5L12.5 4M1.5 12.5L2 10L10 2L12 4L4 12L1.5 12.5Z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          编辑
+        </el-button>
+        <template v-else>
+          <el-button size="small" @click="cancelEdit">取消</el-button>
+          <el-button size="small" type="primary" @click="saveProject" :loading="saving">保存</el-button>
+        </template>
       </div>
-
-      <!-- 表单卡片 -->
+    </div>
+    <div class="info-container">
       <div class="form-card">
         <el-form :model="projectForm" :rules="formRules" ref="projectFormRef" label-position="top">
           <!-- 基本信息 -->
@@ -298,38 +291,23 @@ onMounted(() => {
 
 <style scoped lang="less">
 .project-info-page {
-  padding: var(--saas-content-padding);
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--saas-topbar-height, 64px));
+  background: var(--saas-bg-page);
 }
 
 .info-container {
+  flex: 1;
+  overflow: auto;
+  padding: var(--saas-content-padding);
   max-width: var(--saas-content-max-width);
   margin: 0 auto;
+  width: 100%;
 }
 
-.section-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: var(--saas-space-5);
-
-  .section-title-group {
-    h3 {
-      font-size: var(--saas-text-xl);
-      font-weight: var(--saas-font-bold);
-      color: var(--saas-text-primary);
-      margin: 0 0 var(--saas-space-1) 0;
-    }
-
-    .section-desc {
-      font-size: var(--saas-text-sm);
-      color: var(--saas-text-secondary);
-    }
-  }
-
-  .header-actions {
-    display: flex;
-    gap: var(--saas-space-2);
-  }
+.btn-icon {
+  margin-right: var(--saas-space-1);
 }
 
 .form-card {
